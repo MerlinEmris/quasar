@@ -1,17 +1,16 @@
-
 const parseArgs = require('minimist')
 
-const { log, warn, fatal } = require('../helpers/logger')
+const { log, warn, fatal } = require('../utils/logger.js')
 
 const argv = parseArgs(process.argv.slice(2), {
   alias: {
     y: 'yes',
     h: 'help'
   },
-  boolean: ['y', 'h']
+  boolean: [ 'y', 'h' ]
 })
 
-function showHelp() {
+function showHelp () {
   console.log(`
   Description
     Add/Remove support for PWA / BEX / Cordova / Capacitor / Electron modes.
@@ -37,67 +36,71 @@ if (argv.help) {
 
 if (argv._.length !== 0 && argv._.length !== 2) {
   console.log()
-  warn(`Wrong number of parameters (${argv._.length}).`)
+  warn(`Wrong number of parameters (${ argv._.length }).`)
   showHelp()
   process.exit(1)
 }
 
-const getMode = require('../mode')
-const { green, grey } = require('chalk')
+const { green, gray } = require('kolorist')
+
+const { getCtx } = require('../utils/get-ctx.js')
+const ctx = getCtx()
 
 async function run () {
-  let [ action, mode ] = argv._
+  const [ action, mode ] = argv._
 
-  if (!['add', 'remove'].includes(action)) {
+  if (![ 'add', 'remove' ].includes(action)) {
     console.log()
     warn(`Unknown action specified (${ action }).`)
     showHelp()
     process.exit(1)
   }
 
-  if (![undefined, 'pwa', 'cordova', 'capacitor', 'electron', 'ssr', 'bex'].includes(mode)) {
-    fatal(`Unknown mode "${ mode }" to ${action}`)
+  if (![ undefined, 'pwa', 'cordova', 'capacitor', 'electron', 'ssr', 'bex' ].includes(mode)) {
+    fatal(`Unknown mode "${ mode }" to ${ action }`)
   }
 
-  const cliMode = getMode(mode)
+  const { isModeInstalled, addMode, removeMode } = require(`../modes/${ mode }/${ mode }-installation.js`)
+  const actionMap = { add: addMode, remove: removeMode }
 
-  if (action === 'remove' && argv.yes !== true && cliMode.isInstalled) {
+  if (action === 'remove' && argv.yes !== true && isModeInstalled(ctx.appPaths)) {
     console.log()
 
     const inquirer = require('inquirer')
-    const answer = await inquirer.prompt([{
+    const answer = await inquirer.prompt([ {
       name: 'go',
       type: 'confirm',
-      message: `Will also remove /src-${mode} folder. Are you sure?`,
+      message: `Will also remove /src-${ mode } folder. Are you sure?`,
       default: false
-    }])
+    } ])
 
     if (!answer.go) {
       console.log()
-      console.log(`⚠️  Aborted...`)
+      console.log('⚠️  Aborted...')
       console.log()
       process.exit(0)
     }
   }
 
-  await cliMode[action]()
+  await actionMap[ action ]({ ctx })
 }
 
-function displayModes () {
-  log(`Detecting installed modes...`)
+async function displayModes () {
+  log('Detecting installed modes...')
 
   const info = []
-  ;['pwa', 'ssr', 'cordova', 'capacitor', 'electron', 'bex'].forEach(mode => {
+  for (const mode of [ 'pwa', 'ssr', 'cordova', 'capacitor', 'electron', 'bex' ]) {
+    const { isModeInstalled } = require(`../modes/${ mode }/${ mode }-installation.js`)
     info.push([
-      `Mode ${mode.toUpperCase()}`,
-      getMode(mode).isInstalled ? green('yes') : grey('no')
+      `Mode ${ mode.toUpperCase() }`,
+      isModeInstalled(ctx.appPaths) ? green('yes') : gray('no')
     ])
-  })
+  }
 
   console.log(
-    '\n' +
-    info.map(msg => ' ' + msg[0].padEnd(16, '.') + ' ' + msg[1]).join('\n') +
     '\n'
+    + info.map(msg => ' ' + msg[ 0 ].padEnd(16, '.') + ' ' + msg[ 1 ]).join('\n')
+    + '\n'
   )
 }
 

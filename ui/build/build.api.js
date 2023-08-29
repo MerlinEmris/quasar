@@ -1,4 +1,4 @@
-const glob = require('glob')
+const glob = require('fast-glob')
 const path = require('path')
 const { merge } = require('webpack-merge')
 const fs = require('fs')
@@ -37,7 +37,7 @@ function getMixedInAPI (api, mainFile) {
 }
 
 const topSections = {
-  plugin: [ 'meta', 'injection', 'quasarConfOptions', 'addedIn', 'props', 'methods' ],
+  plugin: [ 'meta', 'injection', 'quasarConfOptions', 'addedIn', 'props', 'methods', 'internal' ],
   component: [ 'meta', 'quasarConfOptions', 'addedIn', 'props', 'slots', 'events', 'methods', 'computedProps' ],
   directive: [ 'meta', 'quasarConfOptions', 'addedIn', 'value', 'arg', 'modifiers' ]
 }
@@ -53,22 +53,22 @@ const objectTypes = {
   },
 
   String: {
-    props: [ 'tsInjectionPoint', 'desc', 'required', 'reactive', 'sync', 'syncable', 'link', 'values', 'default', 'examples', 'category', 'addedIn', 'transformAssetUrls', 'internal' ],
-    required: [ 'desc', 'examples' ],
+    props: [ 'tsInjectionPoint', 'tsType', 'desc', 'required', 'reactive', 'sync', 'syncable', 'link', 'values', 'default', 'examples', 'category', 'addedIn', 'transformAssetUrls', 'internal' ],
+    required: [ 'desc' ],
     isBoolean: [ 'tsInjectionPoint', 'required', 'reactive', 'sync', 'syncable', 'transformAssetUrls', 'internal' ],
     isArray: [ 'examples', 'values' ]
   },
 
   Number: {
     props: [ 'tsInjectionPoint', 'desc', 'required', 'reactive', 'sync', 'syncable', 'link', 'values', 'default', 'examples', 'category', 'addedIn', 'internal' ],
-    required: [ 'desc', 'examples' ],
+    required: [ 'desc' ],
     isBoolean: [ 'tsInjectionPoint', 'required', 'reactive', 'sync', 'syncable', 'internal' ],
     isArray: [ 'examples', 'values' ]
   },
 
   Object: {
     props: [ 'tsInjectionPoint', 'tsType', 'autoDefineTsType', 'desc', 'required', 'reactive', 'sync', 'syncable', 'link', 'values', 'default', 'definition', 'examples', 'category', 'addedIn', 'internal' ],
-    required: [ 'desc', 'examples' ],
+    required: [ 'desc' ],
     recursive: [ 'definition' ],
     isBoolean: [ 'tsInjectionPoint', 'required', 'reactive', 'sync', 'syncable', 'internal' ],
     isObject: [ 'definition' ],
@@ -77,7 +77,7 @@ const objectTypes = {
 
   Array: {
     props: [ 'tsInjectionPoint', 'tsType', 'autoDefineTsType', 'desc', 'required', 'reactive', 'sync', 'syncable', 'link', 'values', 'default', 'definition', 'examples', 'category', 'addedIn', 'internal' ],
-    required: [ 'desc', 'examples' ],
+    required: [ 'desc' ],
     isBoolean: [ 'tsInjectionPoint', 'required', 'reactive', 'sync', 'syncable', 'internal' ],
     isObject: [ 'definition' ],
     isArray: [ 'examples', 'values' ]
@@ -85,7 +85,7 @@ const objectTypes = {
 
   Promise: {
     props: [ 'desc', 'required', 'reactive', 'sync', 'syncable', 'link', 'default', 'examples', 'category', 'addedIn', 'internal' ],
-    required: [ 'desc', 'examples' ],
+    required: [ 'desc' ],
     isBoolean: [ 'tsInjectionPoint', 'required', 'reactive', 'sync', 'syncable', 'internal' ],
     isObject: [ 'definition' ],
     isArray: [ 'examples' ]
@@ -102,7 +102,7 @@ const objectTypes = {
 
   MultipleTypes: {
     props: [ 'tsInjectionPoint', 'tsType', 'autoDefineTsType', 'desc', 'required', 'reactive', 'sync', 'syncable', 'link', 'values', 'default', 'definition', 'params', 'returns', 'examples', 'category', 'addedIn', 'internal' ],
-    required: [ 'desc', 'examples' ],
+    required: [ 'desc' ],
     isBoolean: [ 'tsInjectionPoint', 'required', 'reactive', 'sync', 'syncable', 'internal' ],
     isObject: [ 'definition', 'params', 'returns' ],
     isArray: [ 'examples', 'values' ]
@@ -145,8 +145,10 @@ const objectTypes = {
   },
 
   quasarConfOptions: {
-    props: [ 'propName', 'definition', 'link', 'addedIn' ],
-    required: [ 'propName', 'definition' ]
+    props: [ 'propName', 'definition', 'values', 'tsType', 'desc', 'examples', 'link', 'addedIn' ],
+    required: [ 'propName' ],
+    isObject: [ 'definition' ],
+    isArray: [ 'values' ]
   }
 }
 
@@ -174,7 +176,8 @@ function isClassStyleType (type) {
   return hits === 3
 }
 
-const serializableTypes = [ 'Boolean', 'Number', 'String', 'Array', 'Object' ]
+// See https://github.com/quasarframework/quasar/issues/16046#issuecomment-1666395268 for more info
+const serializableTypes = [ 'Any', 'Boolean', 'Number', 'String', 'Array', 'Object' ]
 function isSerializable (value) {
   const types = Array.isArray(value.type) ? value.type : [ value.type ]
 
@@ -234,6 +237,11 @@ function parseObject ({ banner, api, itemName, masterType, verifyCategory, verif
     for (const prop in obj) {
       // These props are always valid and doesn't need to be specified in 'props' of 'objectTypes' entries
       if ([ 'type', '__exemption' ].includes(prop)) {
+        continue
+      }
+
+      // 'configFileType' is always valid in any level of 'quasarConfOptions' and nothing else
+      if (prop === 'configFileType' && banner.includes('"quasarConfOptions"')) {
         continue
       }
 
@@ -348,8 +356,8 @@ function parseObject ({ banner, api, itemName, masterType, verifyCategory, verif
       }
     }
 
-    if (verifySerializable && isSerializable(obj) === false) {
-      logError(`${ banner } object's type is non-serializable but props in "quasarConfOptions" can only consist of ${ serializableTypes.join('/') }:`)
+    if (verifySerializable && obj.configFileType === undefined && isSerializable(obj) === false) {
+      logError(`${ banner } object's type is non-serializable but props in "quasarConfOptions" can only consist of ${ serializableTypes.join('/') } to be used in quasar.config file. Use "configFileType" prop to specify a serializable type for quasar.config file, or set to null if there is no suitable type:`)
       console.error(obj)
       console.log()
       process.exit(1)
@@ -703,15 +711,19 @@ module.exports.generate = function () {
   return new Promise((resolve) => {
     const list = []
 
-    const plugins = glob.sync(resolvePath('src/plugins/*.json'))
+    const plugins = glob.sync([
+      'src/plugins/*.json',
+      'src/Brand.json',
+      'src/Lang.json'
+    ], { cwd: root, absolute: true })
       .filter(file => !path.basename(file).startsWith('__'))
       .map(fillAPI('plugin', list))
 
-    const directives = glob.sync(resolvePath('src/directives/*.json'))
+    const directives = glob.sync('src/directives/*.json', { cwd: root, absolute: true })
       .filter(file => !path.basename(file).startsWith('__'))
       .map(fillAPI('directive', list))
 
-    const components = glob.sync(resolvePath('src/components/**/Q*.json'))
+    const components = glob.sync('src/components/**/Q*.json', { cwd: root, absolute: true })
       .filter(file => !path.basename(file).startsWith('__'))
       .map(fillAPI('component', list))
 

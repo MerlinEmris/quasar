@@ -149,9 +149,9 @@ function normalizeOptions (options) {
     waitFor: options.waitFor === void 0 ? 0 : options.waitFor,
 
     duration: isNaN(options.duration) === true ? 300 : parseInt(options.duration, 10),
-    easing: typeof options.easing === 'string' && options.easing.length > 0 ? options.easing : 'ease-in-out',
+    easing: typeof options.easing === 'string' && options.easing.length !== 0 ? options.easing : 'ease-in-out',
     delay: isNaN(options.delay) === true ? 0 : parseInt(options.delay, 10),
-    fill: typeof options.fill === 'string' && options.fill.length > 0 ? options.fill : 'none',
+    fill: typeof options.fill === 'string' && options.fill.length !== 0 ? options.fill : 'none',
 
     resize: options.resize === true,
 
@@ -950,12 +950,11 @@ export default function morph (_options) {
         : (
             options.waitFor === 'transitionend'
               ? new Promise(resolve => {
-                const timer = setTimeout(() => {
-                  endFn()
-                }, 400)
-
-                const endFn = ev => {
-                  clearTimeout(timer)
+                const endFn = () => {
+                  if (timer !== null) {
+                    clearTimeout(timer)
+                    timer = null
+                  }
 
                   if (elTo) {
                     elTo.removeEventListener('transitionend', endFn)
@@ -964,6 +963,8 @@ export default function morph (_options) {
 
                   resolve()
                 }
+
+                let timer = setTimeout(endFn, 400)
 
                 elTo.addEventListener('transitionend', endFn)
                 elTo.addEventListener('transitioncancel', endFn)

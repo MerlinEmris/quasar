@@ -1,19 +1,18 @@
 
-const { normalizePath } = require('vite')
-const { dim, underline, bold } = require('kolorist')
+import { normalizePath } from 'vite'
+import { dim, underline, bold } from 'kolorist'
 
-const { warning, error, success } = require('../helpers/logger')
-const getLinter = require('../eslint')
+import { warning, error, success } from '../utils/logger.js'
+import { getLinter } from '../utils/eslint.js'
 
 const eslintUrl = underline(dim('http://eslint.org/docs/rules/'))
-const errorFiles = new Set()
 
 function parseIssue (path, reportEntry) {
   const source = reportEntry.source.split('\n')
 
   return reportEntry.messages.map(entry => {
     const ruleLink = entry.ruleId
-      ? `\n\n    ⚠️  ${eslintUrl}${underline(bold(entry.ruleId))}`
+      ? `\n\n    ⚠️  ${ eslintUrl }${ underline(bold(entry.ruleId)) }`
       : ''
 
     return {
@@ -31,15 +30,16 @@ function parseIssue (path, reportEntry) {
   })
 }
 
-module.exports = function eslintPlugin (quasarConf, getLinterOpts) {
+export async function quasarEsbuildESLintPlugin (quasarConf, compileId) {
   const {
     eslint,
     filter,
     errors,
     warnings,
     fix,
-    outputFixes
-  } = getLinter(quasarConf, getLinterOpts)
+    outputFixes,
+    errorFiles
+  } = await getLinter(quasarConf, compileId)
 
   return {
     name: 'quasar:eslint',
@@ -63,7 +63,7 @@ module.exports = function eslintPlugin (quasarConf, getLinterOpts) {
         const {
           errorCount, fixableErrorCount,
           warningCount, fixableWarningCount
-        } = report[0]
+        } = report[ 0 ]
 
         if (fix === true && (fixableErrorCount !== 0 || fixableWarningCount !== 0)) {
           outputFixes(report)
@@ -74,7 +74,7 @@ module.exports = function eslintPlugin (quasarConf, getLinterOpts) {
           console.log()
           error('Error:', 'LINT')
           console.log()
-          return { errors: parseIssue(path, report[0]) }
+          return { errors: parseIssue(path, report[ 0 ]) }
         }
 
         if (warnings === true && warningCount !== 0) {
@@ -82,7 +82,7 @@ module.exports = function eslintPlugin (quasarConf, getLinterOpts) {
           console.log()
           warning('Warning:', 'LINT')
           console.log()
-          return { warnings: parseIssue(path, report[0]) }
+          return { warnings: parseIssue(path, report[ 0 ]) }
         }
 
         if (errorFiles.has(path) === true) {

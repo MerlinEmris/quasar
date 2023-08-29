@@ -1,20 +1,26 @@
-const appPaths = require('../../app-paths')
-const { createViteConfig, extendViteConfig } = require('../../config-tools')
-const cordovaPlatformInject = require('./vite-plugin.dev.cordova-platform-inject')
+import { createViteConfig, extendViteConfig } from '../../config-tools.js'
+import { quasarVitePluginDevCordovaPlatformInject } from './vite-plugin.dev.cordova-platform-inject.js'
 
-module.exports = {
-  vite: quasarConf => {
-    const cfg = createViteConfig(quasarConf)
+const quasarCordovaConfig = {
+  vite: async quasarConf => {
+    const cfg = await createViteConfig(quasarConf, { compileId: 'vite-cordova' })
 
     if (quasarConf.ctx.dev === true) {
       cfg.plugins.unshift(
-        cordovaPlatformInject(quasarConf)
+        quasarVitePluginDevCordovaPlatformInject(quasarConf)
       )
     }
     else {
-      cfg.build.outDir = appPaths.resolve.cordova('www')
+      cfg.build.outDir = quasarConf.ctx.appPaths.resolve.cordova('www')
     }
 
     return extendViteConfig(cfg, quasarConf, { isClient: true })
   }
+}
+
+const modeConfig = quasarCordovaConfig
+
+export {
+  modeConfig,
+  quasarCordovaConfig
 }

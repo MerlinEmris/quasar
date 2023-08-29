@@ -24,11 +24,11 @@ To serve your production files it is *required* to use a web server, so to serve
 
 Common choices for web servers are [nginx](https://www.nginx.com/), [Caddy](https://caddyserver.com/), [Apache](https://httpd.apache.org/), [Express](https://expressjs.com/); but you should be able to use whatever web server you want.
 
-The web server requires no special setup (unless you built with Vue Router in "history" mode in `quasar.config.js`). The main requirement is to be able to serve static files from a directory, so consult the documentation of your web server on how to set up static file serving.
+The web server requires no special setup (unless you built with Vue Router in "history" mode in the `/quasar.config` file). The main requirement is to be able to serve static files from a directory, so consult the documentation of your web server on how to set up static file serving.
 
 An example config for nginx may look like this:
 
-```
+```nginx
 server {
     listen 80 http2;
     server_name quasar.myapp.com;
@@ -113,6 +113,8 @@ The Vercel CLI should now display information regarding your deployment, like th
 ### Vercel configuration tips
 You should consider adding some additional configurations to your project.
 
+* Important: Vercel expects the build results to be in `/public` directory, and _Quasar_ has it in `/dist/spa` by default, so you will need to override the `Output Directory` in your Vercel project. Set it to `dist/spa` through the Vercel web ui under your project's settings > Build & Development Settings.
+
 * Since Vercel expects the _build_ script to be defined, you may add in `package.json` the following scripts:
 ```json
   {
@@ -123,18 +125,6 @@ You should consider adding some additional configurations to your project.
       "deploy": "vercel"
     }
   }
-```
-
-* Since Vercel expects the build results to be in `/public` directory, and _Quasar_ has it in `/dist/spa` by default,
-consider updating `quasar.config.js` accordingly:
-```js
-module.exports = function (ctx) {
-  return {
-    ...
-    build: {
-      ...
-      distDir: ctx.mode.spa ? 'public' : null,
-    }
 ```
 
 * In order to support SPA routing in the deployed app, consider adding `vercel.json` file in your root folder:

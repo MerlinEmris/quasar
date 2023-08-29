@@ -21,7 +21,7 @@ function getTargetUid (val) {
 export function fieldValueIsFilled (val) {
   return val !== void 0
     && val !== null
-    && ('' + val).length > 0
+    && ('' + val).length !== 0
 }
 
 export const useFieldProps = {
@@ -72,7 +72,7 @@ export const useFieldProps = {
   maxlength: [ Number, String ]
 }
 
-export const useFieldEmits = [ 'update:modelValue', 'clear', 'focus', 'blur', 'popup-show', 'popup-hide' ]
+export const useFieldEmits = [ 'update:modelValue', 'clear', 'focus', 'blur', 'popupShow', 'popupHide' ]
 
 export function useFieldState () {
   const { props, attrs, proxy, vnode } = getCurrentInstance()
@@ -122,7 +122,7 @@ export default function (state) {
   const { props, emit, slots, attrs, proxy } = getCurrentInstance()
   const { $q } = proxy
 
-  let focusoutTimer
+  let focusoutTimer = null
 
   if (state.hasValue === void 0) {
     state.hasValue = computed(() => fieldValueIsFilled(props.modelValue))
@@ -217,7 +217,7 @@ export default function (state) {
       hasError.value === true
         ? ' text-negative'
         : (
-            typeof props.standout === 'string' && props.standout.length > 0 && state.focused.value === true
+            typeof props.standout === 'string' && props.standout.length !== 0 && state.focused.value === true
               ? ` ${ props.standout }`
               : (props.color !== void 0 ? ` text-${ props.color }` : '')
           )
@@ -288,7 +288,11 @@ export default function (state) {
   }
 
   function onControlFocusin (e) {
-    clearTimeout(focusoutTimer)
+    if (focusoutTimer !== null) {
+      clearTimeout(focusoutTimer)
+      focusoutTimer = null
+    }
+
     if (state.editable.value === true && state.focused.value === false) {
       state.focused.value = true
       emit('focus', e)
@@ -296,8 +300,10 @@ export default function (state) {
   }
 
   function onControlFocusout (e, then) {
-    clearTimeout(focusoutTimer)
+    focusoutTimer !== null && clearTimeout(focusoutTimer)
     focusoutTimer = setTimeout(() => {
+      focusoutTimer = null
+
       if (
         document.hasFocus() === true && (
           state.hasPopupOpen === true
@@ -547,7 +553,7 @@ export default function (state) {
   })
 
   onBeforeUnmount(() => {
-    clearTimeout(focusoutTimer)
+    focusoutTimer !== null && clearTimeout(focusoutTimer)
   })
 
   // expose public methods

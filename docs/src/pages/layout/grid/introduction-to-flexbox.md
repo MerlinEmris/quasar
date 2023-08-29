@@ -228,7 +228,7 @@ Also check [Visibility](/style/visibility#window-width-related) Style page to se
 
 ## Flex Addons
 
-When enabled (through `quasar.config.js > framework > cssAddon: true`) it provides breakpoint aware versions for all flex (and display) related CSS classes.
+When enabled (through `quasar.config file > framework > cssAddon: true`) it provides breakpoint aware versions for all flex (and display) related CSS classes.
 
 ::: warning
 Note that there will be a noticeable bump in CSS footprint when enabling it. So only do it if you really need it.
@@ -260,4 +260,4 @@ Examples: `row-md`, `items-lg-end`, `q-pa-xs q-pa-sm-sm q-px-md-lg q-py-md-md`
 ## Flex Playground
 To see the Flex in action, you can use the Flex Playground to interactively learn more.
 
-<q-btn push color="brand-primary" icon-right="launch" label="Flex Playground" to="/layout/grid/flex-playground" />
+<q-btn icon-right="launch" label="Flex Playground" to="/layout/grid/flex-playground" />

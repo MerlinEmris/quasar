@@ -82,7 +82,7 @@ export default createComponent({
 
   emits: [
     ...useDatetimeEmits,
-    'range-start', 'range-end', 'navigation'
+    'rangeStart', 'rangeEnd', 'navigation'
   ],
 
   setup (props, { slots, emit }) {
@@ -210,7 +210,7 @@ export default createComponent({
     )
 
     const headerTitle = computed(() => {
-      if (props.title !== void 0 && props.title !== null && props.title.length > 0) {
+      if (props.title !== void 0 && props.title !== null && props.title.length !== 0) {
         return props.title
       }
 
@@ -262,7 +262,7 @@ export default createComponent({
     })
 
     const headerSubtitle = computed(() => {
-      if (props.subtitle !== void 0 && props.subtitle !== null && props.subtitle.length > 0) {
+      if (props.subtitle !== void 0 && props.subtitle !== null && props.subtitle.length !== 0) {
         return props.subtitle
       }
 
@@ -702,21 +702,19 @@ export default createComponent({
         lastEmitValue = 0
       }
       else {
-        const { year, month } = getViewModel(innerMask.value, innerLocale.value)
-        updateViewModel(year, month)
+        const model = getViewModel(innerMask.value, innerLocale.value)
+        updateViewModel(model.year, model.month, model)
       }
     })
 
     watch(view, () => {
-      blurTargetRef.value !== null && blurTargetRef.value.focus()
+      if (blurTargetRef.value !== null && proxy.$el.contains(document.activeElement) === true) {
+        blurTargetRef.value.focus()
+      }
     })
 
-    watch(() => viewModel.value.year, year => {
-      emit('navigation', { year, month: viewModel.value.month })
-    })
-
-    watch(() => viewModel.value.month, month => {
-      emit('navigation', { year: viewModel.value.year, month })
+    watch(() => viewModel.value.year + '|' + viewModel.value.month, () => {
+      emit('navigation', { year: viewModel.value.year, month: viewModel.value.month })
     })
 
     watch(mask, val => {
@@ -898,7 +896,7 @@ export default createComponent({
       return { year: date.year, month: date.month, day: date.day }
     }
 
-    function updateViewModel (year, month) {
+    function updateViewModel (year, month, time) {
       if (minNav.value !== null && year <= minNav.value.year) {
         year = minNav.value.year
         if (month < minNav.value.month) {
@@ -911,6 +909,11 @@ export default createComponent({
         if (month > maxNav.value.month) {
           month = maxNav.value.month
         }
+      }
+
+      if (time !== void 0) {
+        const { hour, minute, second, millisecond, timezoneOffset, timeHash } = time
+        Object.assign(viewModel.value, { hour, minute, second, millisecond, timezoneOffset, timeHash })
       }
 
       const newHash = year + '/' + pad(month) + '/01'
@@ -1391,7 +1394,7 @@ export default createComponent({
           finalHash: initHash
         }
 
-        emit('range-start', getShortDate(day))
+        emit('rangeStart', getShortDate(day))
       }
       else {
         const
@@ -1404,7 +1407,7 @@ export default createComponent({
         editRange.value = null
         addToModel(initHash === finalHash ? day : { target: day, ...payload })
 
-        emit('range-end', {
+        emit('rangeEnd', {
           from: getShortDate(payload.from),
           to: getShortDate(payload.to)
         })

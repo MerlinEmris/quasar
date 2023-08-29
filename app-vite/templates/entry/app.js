@@ -5,22 +5,11 @@
  *
  * You are probably looking on adding startup/initialization code.
  * Use "quasar new boot <name>" and add it there.
- * One boot file per concern. Then reference the file(s) in quasar.config.js > boot:
+ * One boot file per concern. Then reference the file(s) in quasar.config file > boot:
  * boot: ['file', ...] // do not add ".js" extension to it.
  *
  * Boot files are your "main.js"
  **/
-
-<% if (metaConf.vueDevtools !== false) { %>
-import vueDevtools from '@vue/devtools'
-<% } %>
-
-import { Quasar } from 'quasar'
-import { markRaw } from 'vue'
-import <%= metaConf.needsAppMountHook === true ? 'AppComponent' : 'RootComponent' %> from 'app/<%= sourceFiles.rootComponent %>'
-
-<% if (store) { %>import createStore from 'app/<%= sourceFiles.store %>'<% } %>
-import createRouter from 'app/<%= sourceFiles.router %>'
 
 <% if (ctx.mode.capacitor) { %>
   <% if (metaConf.versions.capacitor <= 2) { %>
@@ -38,6 +27,13 @@ import createRouter from 'app/<%= sourceFiles.router %>'
   <% } %>
 <% } %>
 
+import { Quasar } from 'quasar'
+import { markRaw } from 'vue'
+import <%= metaConf.needsAppMountHook === true ? 'AppComponent' : 'RootComponent' %> from 'app/<%= sourceFiles.rootComponent %>'
+
+<% if (metaConf.hasStore) { %>import createStore from 'app/<%= sourceFiles.store %>'<% } %>
+import createRouter from 'app/<%= sourceFiles.router %>'
+
 <% if (metaConf.needsAppMountHook === true) { %>
 import { defineComponent, h, onMounted<%= ctx.mode.ssr && ssr.manualPostHydrationTrigger !== true ? ', getCurrentInstance' : '' %> } from 'vue'
 const RootComponent = defineComponent({
@@ -46,10 +42,6 @@ const RootComponent = defineComponent({
     onMounted(() => {
       <% if (ctx.mode.capacitor && metaConf.versions.capacitorPluginSplashscreen && capacitor.hideSplashscreen !== false) { %>
       SplashScreen.hide()
-      <% } %>
-
-      <% if (metaConf.vueDevtools !== false) { %>
-      vueDevtools.connect('<%= metaConf.vueDevtools.host %>', <%= metaConf.vueDevtools.port %>)
       <% } %>
 
       <% if (ctx.mode.ssr && ssr.manualPostHydrationTrigger !== true) { %>
@@ -73,7 +65,7 @@ export default async function (createAppFn, quasarUserOptions<%= ctx.mode.ssr ? 
   // Here we inject into it the Quasar UI, the router & possibly the store.
   const app = createAppFn(RootComponent)
 
-  <% if (ctx.dev || ctx.debug) { %>
+  <% if (metaConf.debugging) { %>
   app.config.performance = true
   <% } %>
 
@@ -83,7 +75,7 @@ export default async function (createAppFn, quasarUserOptions<%= ctx.mode.ssr ? 
   app.config.globalProperties.$q.capacitor = window.Capacitor
   <% } %>
 
-  <% if (store) { %>
+  <% if (metaConf.hasStore) { %>
     const store = typeof createStore === 'function'
       ? await createStore({<%= ctx.mode.ssr ? 'ssrContext' : '' %>})
       : createStore
@@ -108,11 +100,11 @@ export default async function (createAppFn, quasarUserOptions<%= ctx.mode.ssr ? 
 
   const router = markRaw(
     typeof createRouter === 'function'
-      ? await createRouter({<%= ctx.mode.ssr ? 'ssrContext' + (store ? ',' : '') : '' %><%= store ? 'store' : '' %>})
+      ? await createRouter({<%= ctx.mode.ssr ? 'ssrContext' + (metaConf.hasStore ? ',' : '') : '' %><%= metaConf.hasStore ? 'store' : '' %>})
       : createRouter
   )
 
-  <% if (store) { %>
+  <% if (metaConf.hasStore) { %>
     // make router instance available in store
     <% if (metaConf.storePackage === 'vuex') { %>
       store.$router = router
@@ -126,7 +118,7 @@ export default async function (createAppFn, quasarUserOptions<%= ctx.mode.ssr ? 
   // different depending on whether we are in a browser or on the server.
   return {
     app,
-    <%= store ? 'store,' + (metaConf.storePackage === 'vuex' ? ' storeKey,' : '') : '' %>
+    <%= metaConf.hasStore ? 'store,' + (metaConf.storePackage === 'vuex' ? ' storeKey,' : '') : '' %>
     router
   }
 }

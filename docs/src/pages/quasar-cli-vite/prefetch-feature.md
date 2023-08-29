@@ -2,7 +2,7 @@
 title: PreFetch Feature
 desc: (@quasar/app-vite) How to prefetch data and initialize your Vuex store, validate the route and redirect to another page in a Quasar app.
 related:
-  - /quasar-cli-vite/quasar-config-js
+  - /quasar-cli-vite/quasar-config-file
 ---
 
 The PreFetch is a feature (**only available when using Quasar CLI**) which allows the components picked up by Vue Router (defined in `/src/router/routes.js`) to:
@@ -19,7 +19,7 @@ All the above will run before the actual route component is rendered.
 ## Installation
 
 ```js
-// quasar.config.js
+// quasar.config file
 return {
   preFetch: true
 }
@@ -125,19 +125,21 @@ export default {
 </script>
 ```
 
-If you are using `<script setup>`, then add a `<script>` section besides it which simply returns an Object with the preFetch() method:
+If you are using `<script setup>` (and Vue 3.3+):
 
 ```html
-<script>
-export default {
+<script setup>
+/**
+ * The defineOptions is a macro.
+ * The options will be hoisted to module scope and cannot access local
+ * variables in <script setup> that are not literal constants.
+ */
+defineOptions({
   preFetch () {
     console.log('running preFetch')
   }
-}
+})
 </script>
-
-
-<script setup>....</script>
 ```
 
 ::: tip

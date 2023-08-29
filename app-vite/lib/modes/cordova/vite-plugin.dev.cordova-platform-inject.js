@@ -1,24 +1,26 @@
 
-const { static: serveStatic } = require('express')
-const appPaths = require('../../app-paths')
+import { static as serveStatic } from 'express'
 
-const { entryPointMarkup } = require('../../helpers/html-template')
+import { entryPointMarkup } from '../../utils/html-template.js'
 
 /**
  * It is applied for dev only!
  */
-module.exports = quasarConf => {
+export function quasarVitePluginDevCordovaPlatformInject (quasarConf) {
+  const folder = quasarConf.ctx.appPaths.resolve.cordova(
+    `platforms/${ quasarConf.ctx.targetName }/platform_www`
+  )
+
   return {
     name: 'quasar:cordova-platform-inject',
     enforce: 'pre',
 
     configureServer (server) {
-      const folder = appPaths.resolve.cordova(`platforms/${ quasarConf.ctx.targetName }/platform_www`)
       server.middlewares.use('/', serveStatic(folder, { maxAge: 0 }))
     },
 
     transformIndexHtml: {
-      enforce: 'pre',
+      order: 'pre',
       transform: html => html.replace(
         entryPointMarkup,
         `<script src="cordova.js"></script>${ entryPointMarkup }`

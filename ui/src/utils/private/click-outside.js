@@ -1,14 +1,17 @@
 import { listenOpts } from '../event.js'
 import { portalProxyList } from '../private/portal.js'
 
-let timer
+let timer = null
 
 const
   { notPassiveCapture } = listenOpts,
   registeredList = []
 
 function globalHandler (evt) {
-  clearTimeout(timer)
+  if (timer !== null) {
+    clearTimeout(timer)
+    timer = null
+  }
 
   const target = evt.target
 
@@ -26,6 +29,12 @@ function globalHandler (evt) {
 
   while (portalIndex >= 0) {
     const proxy = portalProxyList[ portalIndex ].$
+
+    // skip QTooltip portals
+    if (proxy.type.name === 'QTooltip') {
+      portalIndex--
+      continue
+    }
 
     if (proxy.type.name !== 'QDialog') {
       break
@@ -81,7 +90,11 @@ export function removeClickOutside (clickOutsideProps) {
     registeredList.splice(index, 1)
 
     if (registeredList.length === 0) {
-      clearTimeout(timer)
+      if (timer !== null) {
+        clearTimeout(timer)
+        timer = null
+      }
+
       document.removeEventListener('mousedown', globalHandler, notPassiveCapture)
       document.removeEventListener('touchstart', globalHandler, notPassiveCapture)
     }

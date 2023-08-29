@@ -1,15 +1,14 @@
-
 const parseArgs = require('minimist')
 
 const argv = parseArgs(process.argv.slice(2), {
   alias: {
     h: 'help'
   },
-  boolean: ['h']
+  boolean: [ 'h' ]
 })
 
-const extId = argv._[0]
-const cmd = argv._[1]
+const extId = argv._[ 0 ]
+const cmd = argv._[ 1 ]
 
 if (!extId && argv.help) {
   console.log(`
@@ -34,7 +33,7 @@ if (!extId && argv.help) {
   process.exit(0)
 }
 
-const { log, warn } = require('../helpers/logger')
+const { log, warn } = require('../utils/logger.js')
 
 function getArgv (argv) {
   const { _, ...params } = argv
@@ -45,46 +44,44 @@ function getArgv (argv) {
   }
 }
 
-async function run () {
-  const Extension = require('../app-extension/Extension')
-  const extension = new Extension(extId)
+const { getCtx } = require('../utils/get-ctx.js')
+const { appExt } = getCtx()
 
-  const hooks = await extension.run({})
+const ext = appExt.getInstance(extId)
 
-  const list = () => {
-    if (Object.keys(hooks.commands).length === 0) {
-      warn(`"${extId}" app extension has no commands registered`)
-      return
-    }
+const hooks = await ext.run()
 
-    log(`Listing "${extId}" app extension commands`)
-    log()
-
-    for (let cmd in hooks.commands) {
-      console.log(`  > ${cmd}`)
-    }
-
-    console.log()
+const list = () => {
+  if (Object.keys(hooks.commands).length === 0) {
+    warn(`"${ extId }" app extension has no commands registered`)
+    return
   }
 
-  if (!cmd) {
-    list()
-    process.exit(0)
-  }
-  if (!hooks.commands[cmd]) {
-    warn()
-    warn(`"${extId}" app extension has no command called "${cmd}"`)
-    warn()
-    list()
-    process.exit(1)
-  }
-
-  const command = hooks.commands[cmd]
-
-  log(`Running "${extId}" > "${cmd}" command`)
+  log(`Listing "${ extId }" app extension commands`)
   log()
 
-  await command(getArgv(argv))
+  for (const cmd in hooks.commands) {
+    console.log(`  > ${ cmd }`)
+  }
+
+  console.log()
 }
 
-run()
+if (!cmd) {
+  list()
+  process.exit(0)
+}
+if (!hooks.commands[ cmd ]) {
+  warn()
+  warn(`"${ extId }" app extension has no command called "${ cmd }"`)
+  warn()
+  list()
+  process.exit(1)
+}
+
+const command = hooks.commands[ cmd ]
+
+log(`Running "${ extId }" > "${ cmd }" command`)
+log()
+
+await command(getArgv(argv))

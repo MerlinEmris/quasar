@@ -11,7 +11,7 @@ RTL is referring to "right to left" UI for languages that need it.
 ## Enabling RTL support
 
 ### Quasar CLI with Vite
-* Edit `/postcss.config.js` file and uncomment the `require('postcss-rtlcss')` line.
+* Edit `/postcss.config.cjs` file and uncomment the `require('postcss-rtlcss')` line.
 * Yarn/npm install the `postcss-rtlcss` package.
 * If you are already running "quasar dev" command, restart it.
 
@@ -24,7 +24,7 @@ module.exports = {
     // https://github.com/elchininet/postcss-rtlcss
     // If you want to support RTL css, then
     // 1. yarn/npm install postcss-rtlcss
-    // 2. optionally set quasar.config.js > framework > lang to an RTL language
+    // 2. optionally set quasar.config file > framework > lang to an RTL language
     // 3. uncomment the following line:
     // require('postcss-rtlcss')
   ]
@@ -32,7 +32,7 @@ module.exports = {
 ```
 
 ### Quasar CLI with Webpack
-To enable it, you need to edit `/quasar.config.js`:
+To enable it, you need to edit the `/quasar.config` file:
 
 ```js
 build: {
@@ -52,7 +52,7 @@ $ npm install -D postcss-rtlcss
 $ pnpm add quasar -D postcss-rtlcss # experimental support
 ```
 
-Then create `/postcss.config.js` file if you don't have it already, and add this to it:
+Then create `/postcss.config.cjs` file if you don't have it already, and add this to it:
 
 ``` js
 module.exports = {
@@ -109,8 +109,8 @@ Let's discuss about each of these requirements:
 
 3. Optional: *Treat devland source CSS as RTL*.
   By default, Quasar assumes that all styles are written in LTR direction and generates corresponding RTL styles for them. Should you wish to write your own css directly in RTL then you need to:
-    * (Quasar CLI with Webpack) set quasar.config.js > "build" > rtl > "source" to `rtl`
-    * (Quasar CLI with Vite / Quasar Vite plugin / Vue CLI plugin) set `require('postcss-rtlcss')({ source: 'rtl' })` in /postcss.config.js
+    * (Quasar CLI with Webpack) set quasar.config file > "build" > rtl > "source" to `rtl`
+    * (Quasar CLI with Vite / Quasar Vite plugin / Vue CLI plugin) set `require('postcss-rtlcss')({ source: 'rtl' })` in /postcss.config.cjs
 
 ::: tip
 Full list of [postcss-rtlcss options](https://github.com/elchininet/postcss-rtlcss#options).

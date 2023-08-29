@@ -1,17 +1,13 @@
-const fs = require('fs')
-const et = require('elementtree')
+import fs from 'node:fs'
+import et from 'elementtree'
 
-const appPaths = require('../../app-paths')
-const { log, warn } = require('../../helpers/logger')
-const ensureConsistency = require('./ensure-consistency')
-
-const pkg = require(appPaths.resolve.app('package.json'))
-const filePath = appPaths.resolve.cordova('config.xml')
+import { log, warn } from '../../utils/logger.js'
+import { ensureConsistency } from './ensure-consistency.js'
 
 function setFields (root, cfg) {
   Object.keys(cfg).forEach(key => {
     const el = root.find(key)
-    const values = cfg[key]
+    const values = cfg[ key ]
     const isObject = Object(values) === values
 
     if (!el) {
@@ -19,14 +15,14 @@ function setFields (root, cfg) {
         et.SubElement(root, key, values)
       }
       else {
-        let entry = et.SubElement(root, key)
+        const entry = et.SubElement(root, key)
         entry.text = values
       }
     }
     else {
       if (isObject) {
         Object.keys(values).forEach(key => {
-          el.set(key, values[key])
+          el.set(key, values[ key ])
         })
       }
       else {
@@ -36,20 +32,29 @@ function setFields (root, cfg) {
   })
 }
 
-class CordovaConfigFile {
+export class CordovaConfigFile {
   #appURL
   #tamperedFiles
+  #filePath
+  #ctx
 
   prepare (quasarConf) {
-    ensureConsistency()
+    const { ctx } = quasarConf
+    const { appPaths } = ctx
 
-    const doc = et.parse(fs.readFileSync(filePath, 'utf-8'))
+    ensureConsistency({ appPaths })
+
+    this.#ctx = ctx
+    this.#filePath = appPaths.resolve.cordova('config.xml')
+
+    const doc = et.parse(fs.readFileSync(this.#filePath, 'utf-8'))
     this.#appURL = quasarConf.metaConf.APP_URL
     this.#tamperedFiles = []
 
     const root = doc.getroot()
+    const { appPkg } = ctx.pkg
 
-    root.set('version', quasarConf.cordova.version || pkg.version)
+    root.set('version', quasarConf.cordova.version || appPkg.version)
 
     if (quasarConf.cordova.androidVersionCode) {
       root.set('android-versionCode', quasarConf.cordova.androidVersionCode)
@@ -57,10 +62,10 @@ class CordovaConfigFile {
 
     setFields(root, {
       content: { src: this.#appURL },
-      description: quasarConf.cordova.description || pkg.description
+      description: quasarConf.cordova.description || appPkg.description
     })
 
-    if (this.#appURL !== 'index.html' && !root.find(`allow-navigation[@href='${this.#appURL}']`)) {
+    if (this.#appURL !== 'index.html' && !root.find(`allow-navigation[@href='${ this.#appURL }']`)) {
       et.SubElement(root, 'allow-navigation', { href: this.#appURL })
 
       if (quasarConf.devServer.https && quasarConf.ctx.targetName === 'ios') {
@@ -73,7 +78,7 @@ class CordovaConfigFile {
     }
 
     // needed for QResizeObserver until ResizeObserver Web API is supported by all platforms
-    if (!root.find(`allow-navigation[@href='about:*']`)) {
+    if (!root.find('allow-navigation[@href=\'about:*\']')) {
       et.SubElement(root, 'allow-navigation', { href: 'about:*' })
     }
 
@@ -85,12 +90,12 @@ class CordovaConfigFile {
       return
     }
 
-    const doc = et.parse(fs.readFileSync(filePath, 'utf-8'))
+    const doc = et.parse(fs.readFileSync(this.#filePath, 'utf-8'))
     const root = doc.getroot()
 
     root.find('content').set('src', 'index.html')
 
-    const nav = root.find(`allow-navigation[@href='${this.#appURL}']`)
+    const nav = root.find(`allow-navigation[@href='${ this.#appURL }']`)
     if (nav) {
       root.remove(nav)
     }
@@ -106,18 +111,18 @@ class CordovaConfigFile {
 
   #save (doc) {
     const content = doc.write({ indent: 4 })
-    fs.writeFileSync(filePath, content, 'utf8')
+    fs.writeFileSync(this.#filePath, content, 'utf8')
     log('Updated Cordova config.xml')
 
     this.#tamperedFiles.forEach(file => {
       fs.writeFileSync(file.path, file.content, 'utf8')
-      log(`Updated ${file.name}`)
+      log(`Updated ${ file.name }`)
     })
   }
 
   #prepareAppDelegate (node) {
-    const appDelegatePath = appPaths.resolve.cordova(
-      `platforms/ios/${node.text}/Classes/AppDelegate.m`
+    const appDelegatePath = this.#ctx.appPaths.resolve.cordova(
+      `platforms/ios/${ node.text }/Classes/AppDelegate.m`
     )
 
     if (!fs.existsSync(appDelegatePath)) {
@@ -125,9 +130,9 @@ class CordovaConfigFile {
       warn()
       warn()
       warn()
-      warn(`AppDelegate.m not found. Your App will revoke the devserver's SSL certificate.`)
-      warn(`Please report the cordova CLI version and cordova-ios package that you are using.`)
-      warn(`Also, disable HTTPS from quasar.config.js > devServer > server > type: 'https'`)
+      warn('AppDelegate.m not found. Your App will revoke the devserver\'s SSL certificate.')
+      warn('Please report the cordova CLI version and cordova-ios package that you are using.')
+      warn('Also, disable HTTPS from quasar.config file > devServer > server > type: \'https\'')
       warn()
       warn()
       warn()
@@ -162,13 +167,13 @@ return YES;
       'cordova-plugin-ionic-webview',
       'cordova-plugin-wkwebview-engine'
     ].forEach(plugin => {
-      const wkWebViewEnginePath = appPaths.resolve.cordova(
-        `platforms/ios/${node.text}/Plugins/${plugin}/CDVWKWebViewEngine.m`
+      const wkWebViewEnginePath = this.#ctx.appPaths.resolve.cordova(
+        `platforms/ios/${ node.text }/Plugins/${ plugin }/CDVWKWebViewEngine.m`
       )
 
       if (fs.existsSync(wkWebViewEnginePath)) {
         const tamperedFile = {
-          name: `${plugin} > CDVWKWebViewEngine.m`,
+          name: `${ plugin } > CDVWKWebViewEngine.m`,
           path: wkWebViewEnginePath
         }
 
@@ -196,5 +201,3 @@ return YES;
     })
   }
 }
-
-module.exports = CordovaConfigFile

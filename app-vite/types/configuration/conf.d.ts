@@ -8,9 +8,15 @@ import { QuasarElectronConfiguration } from "./electron-conf";
 import { QuasarFrameworkConfiguration } from "./framework-conf";
 import { QuasarPwaConfiguration } from "./pwa-conf";
 import { QuasarSsrConfiguration } from "./ssr-conf";
+import { QuasarMobileConfiguration } from "./mobile-conf";
 import { QuasarBexConfiguration } from "./bex";
 
-import { ServerOptions } from "vite";
+import { Options as OpenOptions } from "open";
+import { ServerOptions as ViteServerOptions } from "vite";
+
+type DevServerOptions = Omit<ViteServerOptions, "open"> & {
+  open?: Omit<OpenOptions, "wait"> | boolean;
+};
 
 type QuasarAnimationsConfiguration = "all" | QuasarAnimations[];
 
@@ -30,6 +36,7 @@ type QuasarAnimationsConfiguration = "all" | QuasarAnimations[];
  *  pwaManifestFile: 'src-pwa/manifest.json',
  *  electronMain: 'src-electron/electron-main',
  *  electronPreload: 'src-electron/electron-preload'
+ *  bexManifestFile: 'src-bex/manifest.json
  * }
  * ```
  */
@@ -42,6 +49,7 @@ interface QuasarSourceFilesConfiguration {
   pwaManifestFile?: string;
   electronMain?: string;
   electronPreload?: string;
+  bexManifestFile?: string;
 }
 
 interface BaseQuasarConfiguration {
@@ -81,7 +89,7 @@ interface BaseQuasarConfiguration {
    * Note: if you're proxying the development server (i.e. using a cloud IDE),
    * set the `public` setting to your public application URL.
    */
-  devServer?: ServerOptions;
+  devServer?: DevServerOptions;
   /** Build configuration options. */
   build?: QuasarBuildConfiguration;
   /** Change the default name of parts of your app. */
@@ -92,7 +100,7 @@ export interface QuasarHookParams {
   quasarConf: QuasarConf;
 }
 
-export type QuasarConf = BaseQuasarConfiguration & {
+export type QuasarConf = BaseQuasarConfiguration & QuasarMobileConfiguration & {
   /** PWA specific [config](/quasar-cli/developing-pwa/configuring-pwa). */
   pwa?: QuasarPwaConfiguration;
 } & {

@@ -1,12 +1,11 @@
-const { join } = require('path')
-const appPaths = require('../../app-paths')
+import { join } from 'node:path'
 
-const { createViteConfig, extendViteConfig, extendEsbuildConfig, createNodeEsbuildConfig } = require('../../config-tools')
-const parseEnv = require('../../parse-env')
+import { createViteConfig, extendViteConfig, extendEsbuildConfig, createNodeEsbuildConfig } from '../../config-tools.js'
+import { getBuildSystemDefine } from '../../utils/env.js'
 
-module.exports = {
-  vite: quasarConf => {
-    const cfg = createViteConfig(quasarConf)
+export const quasarElectronConfig = {
+  vite: async quasarConf => {
+    const cfg = await createViteConfig(quasarConf, { compileId: 'vite-electron' })
 
     if (quasarConf.ctx.prod === true) {
       cfg.build.outDir = join(quasarConf.build.distDir, 'UnPackaged')
@@ -15,49 +14,57 @@ module.exports = {
     return extendViteConfig(cfg, quasarConf, { isClient: true })
   },
 
-  main: quasarConf => {
-    const cfg = createNodeEsbuildConfig(quasarConf, { cacheSuffix: 'electron-main' })
+  main: async quasarConf => {
+    const cfg = await createNodeEsbuildConfig(quasarConf, { compileId: 'node-electron-main', format: 'cjs' })
+    const { appPaths } = quasarConf.ctx
 
     cfg.entryPoints = [ quasarConf.sourceFiles.electronMain ]
     cfg.outfile = quasarConf.ctx.dev === true
-      ? appPaths.resolve.app('.quasar/electron/electron-main.js')
-      : join(quasarConf.build.distDir, 'UnPackaged/electron-main.js')
+      ? appPaths.resolve.entry('electron-main.cjs')
+      : join(quasarConf.build.distDir, 'UnPackaged/electron-main.cjs')
 
     cfg.define = {
       ...cfg.define,
-      ...parseEnv({
-        QUASAR_ELECTRON_PRELOAD: quasarConf.ctx.dev === true
-          ? appPaths.resolve.app(`.quasar/electron/electron-preload.js`)
-          : 'electron-preload.js',
-        QUASAR_PUBLIC_FOLDER: quasarConf.ctx.dev === true
-          ? appPaths.publicDir
-          : '.'
-      }, {})
+      ...getBuildSystemDefine({
+        buildEnv: {
+          QUASAR_ELECTRON_PRELOAD: quasarConf.ctx.dev === true
+            ? appPaths.resolve.entry('electron-preload.cjs')
+            : 'electron-preload.cjs',
+          QUASAR_PUBLIC_FOLDER: quasarConf.ctx.dev === true
+            ? appPaths.publicDir
+            : '.'
+        }
+      })
     }
 
-    return extendEsbuildConfig(cfg, quasarConf.electron, 'ElectronMain')
+    return extendEsbuildConfig(cfg, quasarConf.electron, quasarConf.ctx, 'extendElectronMainConf')
   },
 
-  preload: quasarConf => {
-    const cfg = createNodeEsbuildConfig(quasarConf, { cacheSuffix: 'electron-preload' })
+  preload: async quasarConf => {
+    const cfg = await createNodeEsbuildConfig(quasarConf, { compileId: 'node-electron-preload', format: 'cjs' })
+    const { appPaths } = quasarConf.ctx
 
     cfg.entryPoints = [ quasarConf.sourceFiles.electronPreload ]
     cfg.outfile = quasarConf.ctx.dev === true
-      ? appPaths.resolve.app('.quasar/electron/electron-preload.js')
-      : join(quasarConf.build.distDir, 'UnPackaged/electron-preload.js')
+      ? appPaths.resolve.entry('electron-preload.cjs')
+      : join(quasarConf.build.distDir, 'UnPackaged/electron-preload.cjs')
 
     cfg.define = {
       ...cfg.define,
-      ...parseEnv({
-        QUASAR_ELECTRON_PRELOAD: quasarConf.ctx.dev === true
-          ? appPaths.resolve.app(`.quasar/electron/electron-preload.js`)
-          : 'electron-preload.js',
-        QUASAR_PUBLIC_FOLDER: quasarConf.ctx.dev === true
-          ? appPaths.publicDir
-          : '.'
-      }, {})
+      ...getBuildSystemDefine({
+        buildEnv: {
+          QUASAR_ELECTRON_PRELOAD: quasarConf.ctx.dev === true
+            ? appPaths.resolve.entry('electron-preload.cjs')
+            : 'electron-preload.cjs',
+          QUASAR_PUBLIC_FOLDER: quasarConf.ctx.dev === true
+            ? appPaths.publicDir
+            : '.'
+        }
+      })
     }
 
-    return extendEsbuildConfig(cfg, quasarConf.electron, 'ElectronPreload')
+    return extendEsbuildConfig(cfg, quasarConf.electron, quasarConf.ctx, 'extendElectronPreloadConf')
   }
 }
+
+export const modeConfig = quasarElectronConfig

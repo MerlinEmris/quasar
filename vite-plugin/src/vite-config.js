@@ -1,6 +1,14 @@
-import { version } from 'quasar/package.json'
 
-export function getViteConfig (runMode, externalViteCfg) {
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { quasarPath } from './quasar-path.js'
+
+const { version } = JSON.parse(
+  readFileSync(join(quasarPath, 'package.json'), 'utf-8')
+)
+
+export function getViteConfig (runMode, viteMode, externalViteCfg) {
   const viteCfg = {
     define: {
       __QUASAR_VERSION__: `'${ version }'`,
@@ -25,7 +33,7 @@ export function getViteConfig (runMode, externalViteCfg) {
   else {
     // Alias "quasar" package to its dev file (which has flags)
     // to reduce the number of HTTP requests while in DEV mode
-    if (externalViteCfg.mode === 'development') {
+    if (viteMode !== 'production') {
       viteCfg.resolve = {
         alias: [
           { find: /^quasar$/, replacement: 'quasar/dist/quasar.esm.js' }

@@ -1,31 +1,45 @@
-const path = require('path')
+import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 
-const appPaths = require('../../app-paths')
-const { createViteConfig, extendViteConfig } = require('../../config-tools')
-const escapeRegexString = require('../../helpers/escape-regex-string')
+import { createViteConfig, extendViteConfig } from '../../config-tools.js'
+import { escapeRegexString } from '../../utils/escape-regex-string.js'
 
-const { dependencies } = require(appPaths.resolve.capacitor('package.json'))
-const target = appPaths.resolve.capacitor('node_modules')
+export const quasarCapacitorConfig = {
+  vite: async quasarConf => {
+    const cfg = await createViteConfig(quasarConf, { compileId: 'vite-capacitor' })
+    const { appPaths, cacheProxy } = quasarConf.ctx
 
-const depsList = Object.keys(dependencies)
-const capacitorRE = new RegExp('^(' + depsList.map(escapeRegexString).join('|') + ')')
+    const { capacitorRE, target, injectAliases } = cacheProxy.getRuntime('runtimeCapacitorConfig', () => {
+      const { dependencies } = JSON.parse(
+        readFileSync(appPaths.resolve.capacitor('package.json'), 'utf-8')
+      )
 
-module.exports = {
-  vite: quasarConf => {
-    const cfg = createViteConfig(quasarConf)
+      const target = appPaths.resolve.capacitor('node_modules')
 
-    // we need to set alias as capacitor deps
-    // are installed in /src-capacitor and not in root
-    // so it breaks Vite
-    depsList.forEach(dep => {
-      cfg.resolve.alias[dep] = path.join(target, dep)
+      const depsList = Object.keys(dependencies)
+      const capacitorRE = new RegExp('^(' + depsList.map(escapeRegexString).join('|') + ')')
+
+      return {
+        capacitorRE,
+        target,
+        injectAliases (alias) {
+          // we need to set alias as capacitor deps
+          // are installed in /src-capacitor and not in root
+          // so it breaks Vite
+          depsList.forEach(dep => {
+            alias[ dep ] = join(target, dep)
+          })
+        }
+      }
     })
+
+    injectAliases(cfg.resolve.alias)
 
     cfg.plugins.unshift({
       name: 'quasar:resolve-capacitor-deps',
       resolveId (id) {
         if (capacitorRE.test(id)) {
-          return path.join(target, id)
+          return join(target, id)
         }
       }
     })
@@ -37,3 +51,5 @@ module.exports = {
     return extendViteConfig(cfg, quasarConf, { isClient: true })
   }
 }
+
+export const modeConfig = quasarCapacitorConfig

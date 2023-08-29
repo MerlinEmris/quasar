@@ -1,39 +1,37 @@
-const { createServer } = require('vite')
+import { createServer } from 'vite'
 
-const AppDevserver = require('../../app-devserver')
-const appPaths = require('../../app-paths')
-const CapacitorConfigFile = require('./config-file')
-const { log, fatal } = require('../../helpers/logger')
-const { spawn } = require('../../helpers/spawn')
-const onShutdown = require('../../helpers/on-shutdown')
-const openIde = require('../../helpers/open-ide')
-const config = require('./capacitor-config')
+import { AppDevserver } from '../../app-devserver.js'
+import { CapacitorConfigFile } from './config-file.js'
+import { log, fatal } from '../../utils/logger.js'
+import { spawn } from '../../utils/spawn.js'
+import { onShutdown } from '../../utils/on-shutdown.js'
+import { openIDE } from '../../utils/open-ide.js'
+import { quasarCapacitorConfig } from './capacitor-config.js'
+import { fixAndroidCleartext } from '../../utils/fix-android-cleartext.js'
 
-const { capBin } = require('./cap-cli')
-
-class CapacitorDevServer extends AppDevserver {
+export class QuasarModeDevserver extends AppDevserver {
   #pid = 0
   #server
   #target
-  #capacitorConfig = new CapacitorConfigFile()
+  #capacitorConfigFile = new CapacitorConfigFile()
 
   constructor (opts) {
     super(opts)
 
-    this.registerDiff('capacitor', quasarConf => [
-      quasarConf.metaConf.APP_URL,
-      quasarConf.capacitor
-    ])
-
-    this.#target = opts.quasarConf.ctx.targetName
+    this.#target = this.ctx.targetName
 
     if (this.#target === 'android') {
-      require('../../helpers/fix-android-cleartext')('capacitor')
+      fixAndroidCleartext(this.ctx.appPaths, 'capacitor')
     }
 
     onShutdown(() => {
       this.#stopCapacitor()
     })
+
+    this.registerDiff('capacitor', quasarConf => [
+      quasarConf.metaConf.APP_URL,
+      quasarConf.capacitor
+    ])
   }
 
   run (quasarConf, __isRetry) {
@@ -53,7 +51,7 @@ class CapacitorDevServer extends AppDevserver {
       this.#server.close()
     }
 
-    const viteConfig = await config.vite(quasarConf)
+    const viteConfig = await quasarCapacitorConfig.vite(quasarConf)
 
     this.#server = await createServer(viteConfig)
     await this.#server.listen()
@@ -61,13 +59,24 @@ class CapacitorDevServer extends AppDevserver {
 
   async #runCapacitor (quasarConf) {
     this.#stopCapacitor()
-    this.#capacitorConfig.prepare(quasarConf)
+    await this.#capacitorConfigFile.prepare(quasarConf, this.#target)
 
-    await this.#runCapacitorCommand(quasarConf.capacitor.capacitorCliPreparationParams)
+    const { appPaths, cacheProxy } = this.ctx
+    const { capBin } = await cacheProxy.getModule('capCli')
 
-    this.#capacitorConfig.prepareSSL(quasarConf.devServer.https !== false, this.#target)
+    await this.#runCapacitorCommand(
+      quasarConf.capacitor.capacitorCliPreparationParams,
+      appPaths.capacitorDir,
+      capBin
+    )
 
-    await openIde('capacitor', quasarConf.bin, this.#target, true)
+    await openIDE({
+      mode: 'capacitor',
+      bin: quasarConf.bin,
+      target: this.#target,
+      dev: true,
+      appPaths
+    })
   }
 
   #stopCapacitor () {
@@ -78,12 +87,12 @@ class CapacitorDevServer extends AppDevserver {
     }
   }
 
-  #runCapacitorCommand (args) {
+  async #runCapacitorCommand (args, cwd, capBin) {
     return new Promise(resolve => {
       this.#pid = spawn(
         capBin,
         args,
-        { cwd: appPaths.capacitorDir },
+        { cwd },
         code => {
           this.#cleanup()
 
@@ -99,8 +108,6 @@ class CapacitorDevServer extends AppDevserver {
 
   #cleanup () {
     this.#pid = 0
-    this.#capacitorConfig.reset()
+    this.#capacitorConfigFile.reset()
   }
 }
-
-module.exports = CapacitorDevServer

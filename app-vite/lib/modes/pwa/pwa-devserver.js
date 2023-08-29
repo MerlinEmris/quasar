@@ -1,14 +1,14 @@
-const { createServer } = require('vite')
-const chokidar = require('chokidar')
-const debounce = require('lodash/debounce')
+import { createServer } from 'vite'
+import chokidar from 'chokidar'
+import debounce from 'lodash/debounce.js'
 
-const AppDevserver = require('../../app-devserver')
-const openBrowser = require('../../helpers/open-browser')
-const config = require('./pwa-config')
-const { injectPwaManifest, buildPwaServiceWorker } = require('./utils')
-const { log } = require('../../helpers/logger')
+import { AppDevserver } from '../../app-devserver.js'
+import { openBrowser } from '../../utils/open-browser.js'
+import { quasarPwaConfig } from './pwa-config.js'
+import { injectPwaManifest, buildPwaServiceWorker } from './utils.js'
+import { log } from '../../utils/logger.js'
 
-class PwaDevServer extends AppDevserver {
+export class QuasarModeDevserver extends AppDevserver {
   #server
 
   // also update ssr-devserver.js when changing here
@@ -19,26 +19,30 @@ class PwaDevServer extends AppDevserver {
     super(opts)
 
     // also update ssr-devserver.js when changing here
-    this.registerDiff('pwaManifest', quasarConf => [
+    this.registerDiff('vitePWA', (quasarConf, diffMap) => [
       quasarConf.pwa.injectPwaMetaTags,
       quasarConf.pwa.manifestFilename,
       quasarConf.pwa.extendManifestJson,
-      quasarConf.pwa.useCredentialsForManifestTag
+      quasarConf.pwa.useCredentialsForManifestTag,
+      quasarConf.pwa.swFilename,
+
+      // extends 'vite' diff
+      ...diffMap.vite(quasarConf)
     ])
 
     // also update ssr-devserver.js when changing here
     this.registerDiff('pwaServiceWorker', quasarConf => [
       quasarConf.pwa.workboxMode,
-      quasarConf.pwa.precacheFromPublicFolder,
       quasarConf.pwa.swFilename,
-      quasarConf.pwa[
-        quasarConf.pwa.workboxMode === 'generateSW'
-          ? 'extendGenerateSWOptions'
-          : 'extendInjectManifestOptions'
-      ],
-      quasarConf.pwa.workboxMode === 'injectManifest'
-        ? [ quasarConf.build.env, quasarConf.build.rawDefine ]
-        : ''
+      quasarConf.build,
+      quasarConf.pwa.workboxMode === 'GenerateSW'
+        ? quasarConf.pwa.extendGenerateSWOptions
+        : [
+            quasarConf.pwa.extendInjectManifestOptions,
+            quasarConf.pwa.swFilename,
+            quasarConf.pwa.extendPWACustomSWConf,
+            quasarConf.sourceFiles.pwaServiceWorker
+          ]
     ])
 
     // also update ssr-devserver.js when changing here
@@ -61,7 +65,7 @@ class PwaDevServer extends AppDevserver {
     }
 
     // also update ssr-devserver.js when changing here
-    if (diff([ 'vite', 'pwaFilenames' ], quasarConf) === true) {
+    if (diff('vitePWA', quasarConf) === true) {
       return queue(() => this.#runVite(quasarConf, diff('viteUrl', quasarConf)))
     }
   }
@@ -71,11 +75,9 @@ class PwaDevServer extends AppDevserver {
       this.#server.close()
     }
 
-    const viteConfig = await config.vite(quasarConf)
-
     injectPwaManifest(quasarConf, true)
 
-    this.#server = await createServer(viteConfig)
+    this.#server = await createServer(await quasarPwaConfig.vite(quasarConf))
     await this.#server.listen()
 
     this.printBanner(quasarConf)
@@ -97,7 +99,7 @@ class PwaDevServer extends AppDevserver {
 
     function inject () {
       injectPwaManifest(quasarConf)
-      log(`Generated the PWA manifest file (${quasarConf.pwa.manifestFilename})`)
+      log(`Generated the PWA manifest file (${ quasarConf.pwa.manifestFilename })`)
     }
 
     this.#pwaManifestWatcher = chokidar.watch(
@@ -123,19 +125,17 @@ class PwaDevServer extends AppDevserver {
       await this.#pwaServiceWorkerWatcher.close()
     }
 
-    const workboxConfig = await config.workbox(quasarConf)
+    const workboxConfig = await quasarPwaConfig.workbox(quasarConf)
 
-    if (quasarConf.pwa.workboxMode === 'injectManifest') {
-      const esbuildConfig = await config.customSw(quasarConf)
-      await this.buildWithEsbuild('injectManifest Custom SW', esbuildConfig, () => {
-        queue(() => buildPwaServiceWorker(quasarConf.pwa.workboxMode, workboxConfig))
-      }).then(result => {
-        this.#pwaServiceWorkerWatcher = { close: result.stop }
+    if (quasarConf.pwa.workboxMode === 'InjectManifest') {
+      const esbuildConfig = await quasarPwaConfig.customSw(quasarConf)
+      await this.watchWithEsbuild('InjectManifest Custom SW', esbuildConfig, () => {
+        queue(() => buildPwaServiceWorker(quasarConf, workboxConfig))
+      }).then(esbuildCtx => {
+        this.#pwaServiceWorkerWatcher = { close: esbuildCtx.dispose }
       })
     }
 
-    await buildPwaServiceWorker(quasarConf.pwa.workboxMode, workboxConfig)
+    await buildPwaServiceWorker(quasarConf, workboxConfig)
   }
 }
-
-module.exports = PwaDevServer

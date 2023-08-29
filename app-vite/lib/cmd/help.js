@@ -1,14 +1,19 @@
+
+import { readFileSync } from 'node:fs'
+
 console.log(
-  require('fs').readFileSync(
-    require('path').join(__dirname, '../../assets/logo.art'),
+  readFileSync(
+    new URL('../../assets/logo.art', import.meta.url),
     'utf8'
   )
 )
 
+import { cliPkg } from '../utils/cli-runtime.js'
+
 if (process.env.QUASAR_CLI_VERSION) {
   console.log('  Running @quasar/cli v' + process.env.QUASAR_CLI_VERSION)
 }
-console.log('  Running @quasar/app-vite v' + require('../../package.json').version)
+console.log('  Running @quasar/app-vite v' + cliPkg.version)
 
 console.log(`
   Example usage
@@ -24,11 +29,11 @@ console.log(`
   Commands
     dev, d        Start a dev server for your App
     build, b      Build your app for production
-    clean, c      Clean all build artifacts
+    clean, c      Clean dev/build cache, /dist folder & entry points
     new, n        Quickly scaffold page/layout/component/... vue file
     mode, m       Add/remove Quasar Modes for your App
     inspect       Inspect Vite/esbuild configs used under the hood
-                    - keeps into account your quasar.config.js
+                    - keeps into account your quasar.config file
                       and your installed App Extensions
     ext, e        Manage Quasar App Extensions
     run, r        Run specific command provided by an installed
@@ -45,6 +50,6 @@ console.log(`
 `)
 
 if (global.quasarCli) {
-  console.log(`  Commands supplied by @quasar/cli global installation:`)
+  console.log('  Commands supplied by @quasar/cli global installation:')
   console.log(global.quasarCli.help)
 }

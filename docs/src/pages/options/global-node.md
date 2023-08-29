@@ -5,14 +5,15 @@ desc: Some Quasar components and plugins to show floating elements will create g
 You can define custom className for this global node elements.
 
 ## Installation
+
 You don't need to do anything.
 
 ## Configuration
 
-In order to define custom class for global nodes, edit your /quasar.config.js file like below.
+In order to define custom class for global nodes, edit your /quasar.config file like below.
 
 ```js
-// file: /quasar.config.js
+// quasar.config file
 
 framework: {
   config: {

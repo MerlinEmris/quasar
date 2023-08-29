@@ -15,8 +15,8 @@ import {
   ssrClose,
   ssrCreate,
   ssrListen,
-  ssrRenderPreloadTag,
-  ssrServeStaticContent
+  ssrServeStaticContent,
+  ssrRenderPreloadTag
 } from 'quasar/wrappers'
 
 /**
@@ -53,9 +53,10 @@ export const create = ssrCreate((/* { ... } */) => {
  * For production, you can instead export your
  * handler for serverless use or whatever else fits your needs.
  */
-export const listen = ssrListen(async ({ app, port, isReady }) => {
+export const listen = ssrListen(async ({ app, devHttpsApp, port, isReady }) => {
   await isReady()
-  return app.listen(port, () => {
+  const server = devHttpsApp || app
+  return server.listen(port, () => {
     if (process.env.PROD) {
       console.log('Server listening at port ' + port)
     }
@@ -103,13 +104,13 @@ const pngRE = /\.png$/
  * Should return a String with HTML output
  * (if any) for preloading indicated file
  */
-export const renderPreloadTag = ssrRenderPreloadTag((file) => {
+export const renderPreloadTag = ssrRenderPreloadTag((file/* , { ssrContext } */) => {
   if (jsRE.test(file) === true) {
     return `<link rel="modulepreload" href="${file}" crossorigin>`
   }
 
   if (cssRE.test(file) === true) {
-    return `<link rel="stylesheet" href="${file}">`
+    return `<link rel="stylesheet" href="${file}" crossorigin>`
   }
 
   if (woffRE.test(file) === true) {
@@ -121,15 +122,15 @@ export const renderPreloadTag = ssrRenderPreloadTag((file) => {
   }
 
   if (gifRE.test(file) === true) {
-    return `<link rel="preload" href="${file}" as="image" type="image/gif">`
+    return `<link rel="preload" href="${file}" as="image" type="image/gif" crossorigin>`
   }
 
   if (jpgRE.test(file) === true) {
-    return `<link rel="preload" href="${file}" as="image" type="image/jpeg">`
+    return `<link rel="preload" href="${file}" as="image" type="image/jpeg" crossorigin>`
   }
 
   if (pngRE.test(file) === true) {
-    return `<link rel="preload" href="${file}" as="image" type="image/png">`
+    return `<link rel="preload" href="${file}" as="image" type="image/png" crossorigin>`
   }
 
   return ''

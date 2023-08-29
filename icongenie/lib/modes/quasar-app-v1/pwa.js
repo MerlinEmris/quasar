@@ -1,21 +1,22 @@
-const spaEntries = require('./spa')
+
+import spaEntries from './spa.js'
 
 /* def: width, height, pixel-ratio */
 function getAppleLaunch (def) {
-  const media = `(device-width: ${def[0] / def[2]}px) and (device-height: ${def[1] / def[2]}px) and (-webkit-device-pixel-ratio: ${def[2]})`
+  const media = `(device-width: ${ def[ 0 ] / def[ 2 ] }px) and (device-height: ${ def[ 1 ] / def[ 2 ] }px) and (-webkit-device-pixel-ratio: ${ def[ 2 ] })`
 
   return {
     generator: 'splashscreen',
     name: 'apple-launch-{size}.png',
     folder: 'src/statics/icons',
     sizes: [
-      [ def[0], def[1] ]
+      [ def[ 0 ], def[ 1 ] ]
     ],
-    tag: `${def[3]}\n<link rel="apple-touch-startup-image" media="${media}" href="statics/icons/{name}">`
+    tag: `${ def[ 3 ] }\n<link rel="apple-touch-startup-image" media="${ media }" href="statics/icons/{name}">`
   }
 }
 
-module.exports = [
+export default [
   ...spaEntries,
 
   {
@@ -54,8 +55,11 @@ module.exports = [
   },
 
   ...[
-    [ 1284, 2778, 3, '<!-- iPhone 12 Pro Max -->' ],
-    [ 1170, 2532, 3, '<!-- iPhone 12, 12 Pro -->' ],
+    [ 1290, 2796, 3, '<!-- iPhone 14 Pro, 14 Pro Max -->' ],
+    [ 1179, 2556, 3, '<!-- iPhone 14, 14 Pro -->' ],
+    [ 1284, 2778, 3, '<!-- iPhone 12 Pro Max, 13 Pro Max -->' ],
+    [ 1170, 2532, 3, '<!-- iPhone 12, 12 Pro, 13, 13 Pro -->' ],
+    [ 1080, 2340, 3, '<!-- iPhone 13 Mini -->' ],
     [ 828, 1792, 2, '<!-- iPhone XR, 11 -->' ],
     [ 1125, 2436, 3, '<!-- iPhone X, XS, 12 mini, 11 Pro -->' ],
     [ 1242, 2688, 3, '<!-- iPhone XS Max, 11 Pro Max -->' ],

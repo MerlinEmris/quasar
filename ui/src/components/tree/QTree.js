@@ -78,9 +78,9 @@ export default createComponent({
     'update:expanded',
     'update:ticked',
     'update:selected',
-    'lazy-load',
-    'after-show',
-    'after-hide'
+    'lazyLoad',
+    'afterShow',
+    'afterHide'
   ],
 
   setup (props, { slots, emit }) {
@@ -140,7 +140,7 @@ export default createComponent({
         const tickStrategy = node.tickStrategy || (parent ? parent.tickStrategy : props.tickStrategy)
         const
           key = node[ props.nodeKey ],
-          isParent = node[ props.childrenKey ] && node[ props.childrenKey ].length > 0,
+          isParent = node[ props.childrenKey ] && Array.isArray(node[ props.childrenKey ]) && node[ props.childrenKey ].length !== 0,
           selectable = node.disabled !== true && hasSelection.value === true && node.selectable !== false,
           expandable = node.disabled !== true && node.expandable !== false,
           hasTicking = tickStrategy !== 'none',
@@ -298,16 +298,15 @@ export default createComponent({
     }
 
     function expandAll () {
-      const
-        expanded = innerExpanded.value,
-        travel = node => {
-          if (node[ props.childrenKey ] && node[ props.childrenKey ].length > 0) {
-            if (node.expandable !== false && node.disabled !== true) {
-              expanded.push(node[ props.nodeKey ])
-              node[ props.childrenKey ].forEach(travel)
-            }
+      const expanded = []
+      const travel = node => {
+        if (node[ props.childrenKey ] && node[ props.childrenKey ].length !== 0) {
+          if (node.expandable !== false && node.disabled !== true) {
+            expanded.push(node[ props.nodeKey ])
+            node[ props.childrenKey ].forEach(travel)
           }
         }
+      }
 
       props.nodes.forEach(travel)
 
@@ -329,7 +328,7 @@ export default createComponent({
         if (Array.isArray(node[ props.childrenKey ]) !== true) {
           node[ props.childrenKey ] = []
         }
-        emit('lazy-load', {
+        emit('lazyLoad', {
           node,
           key,
           done: children => {
@@ -382,7 +381,7 @@ export default createComponent({
                 }
               })
             }
-            if (collapse.length > 0) {
+            if (collapse.length !== 0) {
               target = target.filter(k => collapse.includes(k) === false)
             }
           }
@@ -476,11 +475,11 @@ export default createComponent({
     }
 
     function onShow () {
-      emit('after-show')
+      emit('afterShow')
     }
 
     function onHide () {
-      emit('after-hide')
+      emit('afterHide')
     }
 
     function getNode (node) {
@@ -495,7 +494,7 @@ export default createComponent({
         ? getChildren(node[ props.childrenKey ])
         : []
 
-      const isParent = children.length > 0 || (m.lazy && m.lazy !== 'loaded')
+      const isParent = children.length !== 0 || (m.lazy && m.lazy !== 'loaded')
 
       let body = node.body
         ? slots[ `body-${ node.body }` ] || slots[ 'default-body' ]
@@ -626,7 +625,7 @@ export default createComponent({
     }
 
     function onClick (node, meta, e, keyboard) {
-      keyboard !== true && blur(meta.key)
+      keyboard !== true && meta.selectable !== false && blur(meta.key)
 
       if (hasSelection.value && meta.selectable) {
         if (props.noSelectionUnset === false) {
@@ -649,7 +648,7 @@ export default createComponent({
       if (e !== void 0) {
         stopAndPrevent(e)
       }
-      keyboard !== true && blur(meta.key)
+      keyboard !== true && meta.selectable !== false && blur(meta.key)
       setExpanded(meta.key, !meta.expanded, node, meta)
     }
 

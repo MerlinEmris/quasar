@@ -7,12 +7,17 @@ This folder contains a testing harness for [Cypress component testing](https://d
 # run tests in watch mode with visual feedback one component at a time
 # use when developing
 yarn test:component
-# execute all tests without visual feedback
+# run the build script, then run the tests
 # run it locally before pushing the branch and creating a PR
-yarn test:component:run
-# execute all tests without visual feedback and record the results in the Cypress dashboard
-# won't work if run locally, reserved for GitHub Actions CI
 yarn test:component:ci
+
+# ---
+# manual steps, you may need them when building the package once and running multiple tests suite on it
+
+# build the package, to be able to run the tests
+yarn test:build
+# execute all tests without visual feedback, using the previously generated bundle
+yarn test:component:run
 ```
 
 ## Component test setup
@@ -27,7 +32,6 @@ Shortlist :memo:
 - [ ] QInput (400+)
 - [ ] QDialog (400+)
 - [ ] QTable (300+)
-- [ ] QButton (230+)
 - [ ] QDate (150+)
 - [ ] QEditor (100+)
 - [ ] QTabs (100+)
@@ -37,14 +41,15 @@ In progress :clap:
 - [x] QSelect (600+)
 
 Done :white_check_mark:
-- [x] QMenu (140+)
-- [x] QChip (100+)
 - [x] QAvatar
 - [x] QBadge
 - [x] QBanner
 - [x] QBar
 - [x] QBreadcrumbs
 - [x] QBreadcrumbsEl 
+- [x] QButton (230+)
+- [x] QChip (100+)
+- [x] QMenu (140+)
 
 ## Known issues
 Any help to resolve these issues is welcome.

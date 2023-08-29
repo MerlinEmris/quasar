@@ -1,16 +1,17 @@
 
-const { join } = require('path')
-const { writeFileSync } = require('fs')
+import { join } from 'node:path'
+import { writeFileSync } from 'node:fs'
+import { merge } from 'webpack-merge'
 
-const AppBuilder = require('../../app-builder')
-const config = require('./ssr-config')
-const appPaths = require('../../app-paths')
-const getFixedDeps = require('../../helpers/get-fixed-deps')
-const { getProdSsrTemplateFn, transformProdSsrPwaOfflineHtml } = require('../../helpers/html-template')
+import { AppBuilder } from '../../app-builder.js'
+import { quasarSsrConfig } from './ssr-config.js'
+import { cliPkg } from '../../utils/cli-runtime.js'
+import { getFixedDeps } from '../../utils/get-fixed-deps.js'
+import { getProdSsrTemplateFn, transformProdSsrPwaOfflineHtml } from '../../utils/html-template.js'
 
-const { injectPwaManifest, buildPwaServiceWorker } = require('../pwa/utils')
+import { injectPwaManifest, buildPwaServiceWorker } from '../pwa/utils.js'
 
-class SsrBuilder extends AppBuilder {
+export class QuasarModeBuilder extends AppBuilder {
   async build () {
     await this.#buildWebserver()
     await this.#copyWebserverFiles()
@@ -21,7 +22,7 @@ class SsrBuilder extends AppBuilder {
       injectPwaManifest(this.quasarConf)
     }
 
-    const viteClientConfig = await config.viteClient(this.quasarConf)
+    const viteClientConfig = await quasarSsrConfig.viteClient(this.quasarConf)
     await this.buildWithVite('SSR Client', viteClientConfig)
 
     this.moveFile(
@@ -48,27 +49,27 @@ class SsrBuilder extends AppBuilder {
       )
 
       // also update pwa-builder.js when changing here
-      if (this.quasarConf.pwa.workboxMode === 'injectManifest') {
-        const esbuildConfig = await config.customSw(this.quasarConf)
-        await this.buildWithEsbuild('injectManifest Custom SW', esbuildConfig)
+      if (this.quasarConf.pwa.workboxMode === 'InjectManifest') {
+        const esbuildConfig = await quasarSsrConfig.customSw(this.quasarConf)
+        await this.buildWithEsbuild('InjectManifest Custom SW', esbuildConfig)
       }
 
       // also update pwa-builder.js when changing here
-      const workboxConfig = await config.workbox(this.quasarConf)
-      await buildPwaServiceWorker(this.quasarConf.pwa.workboxMode, workboxConfig)
+      const workboxConfig = await quasarSsrConfig.workbox(this.quasarConf)
+      await buildPwaServiceWorker(this.quasarConf, workboxConfig)
 
       // restore distDir
       this.quasarConf.build.distDir = originalDistDir
     }
 
-    const viteServerConfig = await config.viteServer(this.quasarConf)
+    const viteServerConfig = await quasarSsrConfig.viteServer(this.quasarConf)
     await this.buildWithVite('SSR Server', viteServerConfig)
 
     this.printSummary(this.quasarConf.build.distDir, true)
   }
 
   async #buildWebserver () {
-    const esbuildConfig = await config.webserver(this.quasarConf)
+    const esbuildConfig = await quasarSsrConfig.webserver(this.quasarConf)
     await this.buildWithEsbuild('SSR Webserver', esbuildConfig)
   }
 
@@ -85,31 +86,33 @@ class SsrBuilder extends AppBuilder {
   }
 
   async #writePackageJson () {
-    const appPkg = require(appPaths.resolve.app('package.json'))
-    const { dependencies: cliDeps } = require(appPaths.resolve.cli('package.json'))
+    const { appPkg } = this.ctx.pkg
 
-    const appDeps = getFixedDeps(appPkg.dependencies || {})
+    const localAppPkg = merge({}, appPkg)
+    const appDeps = getFixedDeps(localAppPkg.dependencies || {}, this.ctx.appPaths.appDir)
 
     const pkg = {
-      name: appPkg.name,
-      version: appPkg.version,
-      description: appPkg.description,
-      author: appPkg.author,
+      name: localAppPkg.name,
+      version: localAppPkg.version,
+      description: localAppPkg.description,
+      author: localAppPkg.author,
       private: true,
+      type: 'module',
+      module: 'index.js',
       scripts: {
         start: 'node index.js'
       },
       dependencies: Object.assign(appDeps, {
-        'compression': cliDeps.compression,
-        'express': cliDeps.express
+        compression: cliPkg.dependencies.compression,
+        express: cliPkg.dependencies.express
       }),
-      engines: appPkg.engines,
-      browserslist: appPkg.browserslist,
+      engines: localAppPkg.engines,
+      browserslist: localAppPkg.browserslist,
       quasar: { ssr: true }
     }
 
     if (this.quasarConf.ssr.manualStoreSerialization !== true) {
-      pkg.dependencies['serialize-javascript'] = cliDeps['serialize-javascript']
+      pkg.dependencies[ 'serialize-javascript' ] = cliPkg.dependencies[ 'serialize-javascript' ]
     }
 
     if (typeof this.quasarConf.ssr.extendPackageJson === 'function') {
@@ -125,11 +128,18 @@ class SsrBuilder extends AppBuilder {
 
     const templateFn = getProdSsrTemplateFn(html, this.quasarConf)
 
-    this.writeFile('render-template.js', `module.exports=${templateFn.source}`)
+    const prefix = this.ctx.pkg.appPkg.type === 'module'
+      ? 'export default '
+      : 'module.exports='
+
+    this.writeFile(
+      'render-template.js',
+      `${ prefix }${ templateFn.source }`
+    )
 
     if (this.quasarConf.ssr.pwa === true) {
       this.writeFile(
-        `client/${this.quasarConf.ssr.ssrPwaHtmlFilename}`,
+        `client/${ this.quasarConf.ssr.pwaOfflineHtmlFilename }`,
         transformProdSsrPwaOfflineHtml(html, this.quasarConf)
       )
     }
@@ -137,5 +147,3 @@ class SsrBuilder extends AppBuilder {
     this.removeFile(htmlFile)
   }
 }
-
-module.exports = SsrBuilder

@@ -1,98 +1,107 @@
-<template lang="pug">
-q-card.doc-installation.q-my-lg(flat, bordered)
-  q-tabs.text-grey-7.bg-white(v-model="currentTab", align="left", indicator-color="brand-primary", dense, :breakpoint="0")
-    q-tab(
-      v-for="tab in ['Quasar CLI', 'Vite plugin / Vue CLI', 'UMD']"
-      :key="`installation-${tab}`"
-      :name="tab"
-      :label="tab"
-      no-caps
-    )
+<template>
+  <q-card :id="id" class="doc-installation q-my-xl" flat bordered>
+    <div class="header-toolbar row items-center">
+      <doc-card-title :title="props.title" />
+    </div>
 
-  q-separator
+    <q-tabs class="header-tabs" v-model="currentTab" align="left" active-color="brand-primary" indicator-color="brand-primary" dense :breakpoint="0" shrink>
+      <q-tab v-for="tab in tabList" :key="`installation-${tab}`" :name="tab" class="header-btn" no-caps>
+        {{ tab }}
+      </q-tab>
+    </q-tabs>
 
-  q-tab-panels(v-model="currentTab", animated)
-    q-tab-panel.q-pa-none(name="Quasar CLI")
-      doc-code(:code="QuasarCli")
+    <q-separator />
 
-    q-tab-panel.q-pa-none(name="Vite plugin / Vue CLI")
-      doc-code(:code="ExternalCli")
+    <q-tab-panels v-model="currentTab" animated>
+      <q-tab-panel class="q-pa-none" name="Quasar CLI">
+        <doc-code :code="QuasarCli" />
+      </q-tab-panel>
 
-    q-tab-panel.q-pa-none(name="UMD")
-      doc-code(:code="UMD")
+      <q-tab-panel class="q-pa-none" name="Vite plugin / Vue CLI">
+        <doc-code :code="ExternalCli" />
+      </q-tab-panel>
+
+      <q-tab-panel class="q-pa-none" name="UMD">
+        <doc-code :code="UMD" />
+      </q-tab-panel>
+    </q-tab-panels>
+  </q-card>
 </template>
 
-<script>
+<script setup>
 import { ref, computed } from 'vue'
+
 import DocCode from './DocCode.vue'
+import DocCardTitle from './DocCardTitle.vue'
 
-export default {
-  name: 'DocInstallation',
+import { slugify } from 'src/assets/page-utils.js'
 
-  components: {
-    DocCode
-  },
+const props = defineProps({
+  components: [ Array, String ],
+  directives: [ Array, String ],
+  plugins: [ Array, String ],
+  config: String,
+  title: {
+    type: String,
+    default: 'Installation'
+  }
+})
 
-  props: {
-    components: [ Array, String ],
-    directives: [ Array, String ],
-    plugins: [ Array, String ],
-    config: String
-  },
+const tabList = [ 'Quasar CLI', 'Vite plugin / Vue CLI', 'UMD' ]
+const currentTab = ref('Quasar CLI')
 
-  setup (props) {
-    const currentTab = ref('Quasar CLI')
+const id = computed(() => slugify(props.title))
 
-    function nameAsString (name, indent, quotes = true) {
-      const wrapper = quotes
-        ? str => `'${str}'`
-        : str => str
+function nameAsString (name, indent, quotes = true) {
+  const wrapper = quotes
+    ? str => `'${str}'`
+    : str => str
 
-      return Array.isArray(name)
-        ? name.map(wrapper).join(',\n' + ''.padStart(indent, ' '))
-        : wrapper(name)
-    }
+  return Array.isArray(name)
+    ? name.map(wrapper).join(',\n' + ''.padStart(indent, ' '))
+    : wrapper(name)
+}
 
-    const quasarConf = computed(() => {
-      return props.config !== void 0
-        ? `${props.config}: { /* look at QuasarConfOptions from the API card */ }`
-        : null
-    })
+const quasarConf = computed(() => {
+  return props.config !== void 0
+    ? `${props.config}: /* look at QuasarConfOptions from the API card */`
+    : null
+})
 
-    const QuasarCli = computed(() => {
-      if (props.plugins === void 0 && quasarConf.value === null) {
-        return `/*
+const QuasarCli = computed(() => {
+  if (props.plugins === void 0 && quasarConf.value === null) {
+    return `/*
  * No installation step is necessary.
  * It gets installed by default by @quasar/app.
  */`
-      }
+  }
 
-      const parts = []
+  const parts = []
 
-      if (props.plugins !== void 0) {
-        parts.push(`plugins: [
+  if (props.plugins !== void 0) {
+    parts.push(`plugins: [
       ${nameAsString(props.plugins, 6)}
     ]`)
-      }
+  }
 
-      if (quasarConf.value !== null) {
-        parts.push(`config: {
+  if (quasarConf.value !== null) {
+    parts.push(`config: {
       ${quasarConf.value}
     }`)
-      }
+  }
 
-      return `// quasar.config.js
+  return `// quasar.config file
 
 return {
   framework: {
     ${parts.join(',\n    ')}
   }
 }`
-    })
+})
 
-    const UMD = computed(() => {
-      const config = quasarConf.value !== null
-        ? `
+const UMD = computed(() => {
+  const config = quasarConf.value !== null
+    ? `
 
 // Optional;
 // Place the global quasarConfig Object in a script tag BEFORE your Quasar script tag
@@ -101,53 +110,43 @@ app.use(Quasar, {
     ${quasarConf.value}
   }
 }`
-        : ''
+    : ''
 
-      const content = `/*
+  const content = `/*
  * No installation step is necessary.
  * It gets installed by default.
  */`
 
-      return content + config
-    })
+  return content + config
+})
 
-    const ExternalCli = computed(() => {
-      const types = [], imports = []
+const ExternalCli = computed(() => {
+  const types = []
+  const imports = ['Quasar']
 
-      ;[ 'components', 'directives', 'plugins' ].forEach(type => {
-        if (props[ type ] !== void 0) {
-          imports.push(nameAsString(props[ type ], 2, false))
-          types.push(`${type}: {
+  ;[ 'components', 'directives', 'plugins' ].forEach(type => {
+    if (props[ type ] !== void 0) {
+      imports.push(nameAsString(props[ type ], 2, false))
+      types.push(`${type}: {
     ${nameAsString(props[ type ], 4, false)}
   }`)
-        }
-      })
+    }
+  })
 
-      if (quasarConf.value !== null) {
-        types.push(`config: {
+  if (quasarConf.value !== null) {
+    types.push(`config: {
     ${quasarConf.value}
   }`)
-      }
+  }
 
-      return `// main.js
+  return `// main.js
 
 import {
-  Quasar,
   ${imports.join(',\n  ')}
 } from 'quasar'
 
 app.use(Quasar, {
   ${types.join(',\n  ')}
 })`
-    })
-
-    return {
-      currentTab,
-
-      QuasarCli,
-      UMD,
-      ExternalCli
-    }
-  }
-}
+})
 </script>

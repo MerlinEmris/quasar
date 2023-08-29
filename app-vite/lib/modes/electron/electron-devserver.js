@@ -1,11 +1,12 @@
-const { createServer } = require('vite')
+import { readFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { createServer } from 'vite'
 
-const AppDevserver = require('../../app-devserver')
-const appPaths = require('../../app-paths')
-const { log, warn, fatal } = require('../../helpers/logger')
-const { spawn } = require('../../helpers/spawn')
-const getPackage = require('../../helpers/get-package')
-const config = require('./electron-config')
+import { AppDevserver } from '../../app-devserver.js'
+import { log, warn, fatal } from '../../utils/logger.js'
+import { spawn } from '../../utils/spawn.js'
+import { getPackagePath } from '../../utils/get-package-path.js'
+import { quasarElectronConfig } from './electron-config.js'
 
 function wait (time) {
   return new Promise(resolve => {
@@ -13,28 +14,34 @@ function wait (time) {
   })
 }
 
-class ElectronDevServer extends AppDevserver {
+export class QuasarModeDevserver extends AppDevserver {
   #pid = 0
   #server
   #stopMain
   #stopPreload
   #killedPid = false
+  #electronExecutable
 
   constructor (opts) {
     super(opts)
 
-    this.registerDiff('electron', quasarConf => [
-      quasarConf.eslint,
-      quasarConf.devServer.host,
-      quasarConf.devServer.port,
-      quasarConf.devServer.https,
-      quasarConf.build.env,
-      quasarConf.build.rawDefine,
+    const electronPkgPath = getPackagePath('electron/package.json', this.ctx.appPaths.appDir)
+    const electronPkg = JSON.parse(
+      readFileSync(electronPkgPath, 'utf-8')
+    )
+
+    this.#electronExecutable = join(dirname(electronPkgPath), electronPkg.bin.electron)
+
+    this.registerDiff('electron', (quasarConf, diffMap) => [
+      quasarConf.devServer,
       quasarConf.electron.extendElectronMainConf,
       quasarConf.electron.extendElectronPreloadConf,
       quasarConf.electron.inspectPort,
       quasarConf.sourceFiles.electronMain,
-      quasarConf.sourceFiles.electronPreload
+      quasarConf.sourceFiles.electronPreload,
+
+      // extends 'esbuild' diff
+      ...diffMap.esbuild(quasarConf)
     ])
   }
 
@@ -55,7 +62,7 @@ class ElectronDevServer extends AppDevserver {
       this.#server.close()
     }
 
-    const viteConfig = await config.vite(quasarConf)
+    const viteConfig = await quasarElectronConfig.vite(quasarConf)
 
     this.#server = await createServer(viteConfig)
     await this.#server.listen()
@@ -75,26 +82,26 @@ class ElectronDevServer extends AppDevserver {
     let mainReady = false
     let preloadReady = false
 
-    const cfgMain = await config.main(quasarConf)
-    const cfgPreload = await config.preload(quasarConf)
+    const cfgMain = await quasarElectronConfig.main(quasarConf)
+    const cfgPreload = await quasarElectronConfig.preload(quasarConf)
 
     return Promise.all([
-      this.buildWithEsbuild('Electron Main', cfgMain, () => {
+      this.watchWithEsbuild('Electron Main', cfgMain, () => {
         if (preloadReady === true) {
           this.#runElectron(quasarConf)
         }
-      }).then(result => {
+      }).then(esbuildCtx => {
         mainReady = true
-        this.#stopMain = result.stop
+        this.#stopMain = esbuildCtx.dispose
       }),
 
-      this.buildWithEsbuild('Electron Preload', cfgPreload, () => {
+      this.watchWithEsbuild('Electron Preload', cfgPreload, () => {
         if (mainReady === true) {
           this.#runElectron(quasarConf)
         }
-      }).then(result => {
+      }).then(esbuildCtx => {
         preloadReady = true
-        this.#stopPreload = result.stop
+        this.#stopPreload = esbuildCtx.dispose
       })
     ]).then(() => {
       return this.#runElectron(quasarConf)
@@ -115,19 +122,19 @@ class ElectronDevServer extends AppDevserver {
     }
 
     this.#pid = spawn(
-      getPackage('electron'),
+      this.#electronExecutable,
       [
         '--inspect=' + quasarConf.electron.inspectPort,
-        appPaths.resolve.app(`.quasar/electron/electron-main.js`)
+        this.ctx.appPaths.resolve.entry('electron-main.cjs')
       ].concat(this.argv._),
-      { cwd: appPaths.appDir },
+      { cwd: this.ctx.appPaths.appDir },
       code => {
         if (this.#killedPid === true) {
           this.#killedPid = false
         }
         else if (code) {
           warn()
-          fatal(`Electron process ended with error code: ${code}`)
+          fatal(`Electron process ended with error code: ${ code }`)
         }
         else { // else it wasn't killed by us
           warn()
@@ -137,5 +144,3 @@ class ElectronDevServer extends AppDevserver {
     )
   }
 }
-
-module.exports = ElectronDevServer

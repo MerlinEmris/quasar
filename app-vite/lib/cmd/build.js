@@ -2,7 +2,7 @@ if (process.env.NODE_ENV === void 0) {
   process.env.NODE_ENV = 'production'
 }
 
-const parseArgs = require('minimist')
+import parseArgs from 'minimist'
 
 const argv = parseArgs(process.argv.slice(2), {
   alias: {
@@ -16,8 +16,8 @@ const argv = parseArgs(process.argv.slice(2), {
     h: 'help',
     P: 'publish'
   },
-  boolean: ['h', 'd', 'u', 'i'],
-  string: ['m', 'T', 'P'],
+  boolean: [ 'h', 'd', 'u', 'i' ],
+  string: [ 'm', 'T', 'P' ],
   default: {
     m: 'spa'
   }
@@ -88,117 +88,114 @@ if (argv.help) {
   process.exit(0)
 }
 
-const ensureArgv = require('../helpers/ensure-argv')
+const { ensureArgv } = await import('../utils/ensure-argv.js')
 ensureArgv(argv, 'build')
 
+const path = await import('node:path')
+const { readFileSync } = await import('node:fs')
+
 console.log(
-  require('fs').readFileSync(
-    require('path').join(__dirname, '../../assets/logo.art'),
+  readFileSync(
+    new URL('../../assets/logo.art', import.meta.url),
     'utf8'
   )
 )
 
-const banner = require('../helpers/banner-global')
-banner(argv, 'build')
+const { getCtx } = await import('../utils/get-ctx.js')
+const ctx = getCtx({
+  mode: argv.mode,
+  target: argv.target,
+  arch: argv.arch,
+  bundler: argv.bundler,
+  debug: argv.debug,
+  prod: true,
+  publish: argv.publish
+})
 
-const { log, fatal } = require('../helpers/logger')
-const path = require('path')
+const { displayBanner } = await import('../utils/banner.js')
+displayBanner({ argv, ctx, cmd: 'build' })
 
-async function build () {
-  // install mode if it's missing
-  const { add } = require(`../modes/${argv.mode}/${argv.mode}-installation`)
-  await add(true, argv.target)
+const { log } = await import('../utils/logger.js')
 
-  const getQuasarCtx = require('../helpers/get-quasar-ctx')
-  const ctx = getQuasarCtx({
-    mode: argv.mode,
-    target: argv.target,
-    arch: argv.arch,
-    bundler: argv.bundler,
-    debug: argv.debug,
-    prod: true,
-    publish: argv.publish
-  })
+// install mode if it's missing
+const { addMode } = await import(`../modes/${ argv.mode }/${ argv.mode }-installation.js`)
+await addMode({ ctx, silent: true, target: argv.target })
 
-  // register app extensions
-  const extensionRunner = require('../app-extension/extensions-runner')
-  await extensionRunner.registerExtensions(ctx)
+const { QuasarConfigFile } = await import('../quasar-config-file.js')
+const quasarConfFile = new QuasarConfigFile({
+  ctx,
+  port: argv.port,
+  host: argv.hostname
+})
 
-  const QuasarConfFile = require('../quasar-config-file')
-  const quasarConfFile = new QuasarConfFile({
+await quasarConfFile.init()
+
+const quasarConf = await quasarConfFile.read()
+
+const { regenerateTypesFeatureFlags } = await import('../utils/types-feature-flags.js')
+await regenerateTypesFeatureFlags(quasarConf)
+
+const { QuasarModeBuilder } = await import(`../modes/${ argv.mode }/${ argv.mode }-builder.js`)
+const appBuilder = new QuasarModeBuilder({ argv, quasarConf })
+
+const { default: fse } = await import('fs-extra')
+let outputFolder = quasarConf.build.distDir
+fse.removeSync(outputFolder)
+
+const { EntryFilesGenerator } = await import('../entry-files-generator.js')
+const entryFiles = new EntryFilesGenerator(ctx)
+entryFiles.generate(quasarConf)
+
+if (typeof quasarConf.build.beforeBuild === 'function') {
+  await quasarConf.build.beforeBuild({ quasarConf })
+}
+
+// run possible beforeBuild hooks
+await ctx.appExt.runAppExtensionHook('beforeBuild', async hook => {
+  log(`Extension(${ hook.api.extId }): Running beforeBuild hook...`)
+  await hook.fn(hook.api, { quasarConf })
+})
+
+appBuilder.build().then(async () => {
+  outputFolder = argv.mode === 'cordova'
+    ? path.join(outputFolder, '..')
+    : outputFolder
+
+  displayBanner({
+    argv,
     ctx,
-    port: argv.port,
-    host: argv.hostname
+    cmd: 'build',
+    details: {
+      buildOutputFolder: outputFolder,
+      target: quasarConf.build.target
+    }
   })
 
-  const quasarConf = await quasarConfFile.read()
-  if (quasarConf.error !== void 0) {
-    fatal(quasarConf.error, 'FAIL')
-  }
-
-  const regenerateTypesFeatureFlags = require('../helpers/types-feature-flags')
-  regenerateTypesFeatureFlags(quasarConf)
-
-  const AppProdBuilder = require(`../modes/${argv.mode}/${argv.mode}-builder`)
-  const appBuilder = new AppProdBuilder({ argv, quasarConf })
-
-  const artifacts = require('../artifacts')
-  let outputFolder = quasarConf.build.distDir
-  artifacts.clean(outputFolder)
-
-  const entryFiles = require('../entry-files-generator')(ctx)
-  entryFiles.generate(quasarConf)
-
-  if (typeof quasarConf.build.beforeBuild === 'function') {
-    await quasarConf.build.beforeBuild({ quasarConf })
+  if (typeof quasarConf.build.afterBuild === 'function') {
+    await quasarConf.build.afterBuild({ quasarConf })
   }
 
   // run possible beforeBuild hooks
-  await extensionRunner.runHook('beforeBuild', async hook => {
-    log(`Extension(${hook.api.extId}): Running beforeBuild hook...`)
+  await ctx.appExt.runAppExtensionHook('afterBuild', async hook => {
+    log(`Extension(${ hook.api.extId }): Running afterBuild hook...`)
     await hook.fn(hook.api, { quasarConf })
   })
 
-  appBuilder.build().then(async () => {
-    artifacts.add(outputFolder)
-
-    outputFolder = argv.mode === 'cordova'
-      ? path.join(outputFolder, '..')
-      : outputFolder
-
-    banner(argv, 'build', {
-      buildOutputFolder: outputFolder,
-      target: quasarConf.build.target
-    })
-
-    if (typeof quasarConf.build.afterBuild === 'function') {
-      await quasarConf.build.afterBuild({ quasarConf })
+  if (argv.publish !== void 0) {
+    const opts = {
+      arg: argv.publish,
+      distDir: outputFolder,
+      quasarConf
     }
 
-    // run possible beforeBuild hooks
-    await extensionRunner.runHook('afterBuild', async hook => {
-      log(`Extension(${hook.api.extId}): Running afterBuild hook...`)
-      await hook.fn(hook.api, { quasarConf })
-    })
-
-    if (argv.publish !== void 0) {
-      const opts = {
-        arg: argv.publish,
-        distDir: outputFolder,
-        quasarConf
-      }
-
-      if (typeof quasarConf.build.onPublish === 'function') {
-        await quasarConf.build.onPublish(opts)
-      }
-
-      // run possible onPublish hooks
-      await extensionRunner.runHook('onPublish', async hook => {
-        log(`Extension(${hook.api.extId}): Running onPublish hook...`)
-        await hook.fn(hook.api, opts)
-      })
+    if (typeof quasarConf.build.onPublish === 'function') {
+      await quasarConf.build.onPublish(opts)
     }
-  })
-}
 
-build()
+    // run possible onPublish hooks
+    await ctx.appExt.runAppExtensionHook('onPublish', async hook => {
+      log(`Extension(${ hook.api.extId }): Running onPublish hook...`)
+      await hook.fn(hook.api, opts)
+    })
+  }
+})

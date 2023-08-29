@@ -1,10 +1,11 @@
+
 import { normalizePath } from 'vite'
 
-import { getViteConfig } from './vite-config'
-import { vueTransform } from './vue-transform'
-import { createScssTransform } from './scss-transform'
-import { parseViteRequest } from './query'
-import { mapQuasarImports } from './js-transform'
+import { getViteConfig } from './vite-config.js'
+import { vueTransform } from './vue-transform.js'
+import { createScssTransform } from './scss-transform.js'
+import { parseViteRequest } from './query.js'
+import { mapQuasarImports } from './js-transform.js'
 
 const defaultOptions = {
   runMode: 'web-client',
@@ -17,15 +18,17 @@ function getConfigPlugin (opts) {
   return {
     name: 'vite:quasar:vite-conf',
 
-    config (viteConf) {
+    configResolved (viteConf) {
       const vueCfg = viteConf.plugins.find(entry => entry.name === 'vite:vue')
 
       if (vueCfg === void 0) {
-        console.warn('In your Vite config file, please add the Quasar plugin after the Vue one')
+        console.error('\n\n[Quasar] Error: In your Vite config file, please add the Quasar plugin ** after ** the Vue one\n\n')
         process.exit(1)
       }
+    },
 
-      return getViteConfig(opts.runMode, viteConf)
+    config (viteConf, { mode }) {
+      return getViteConfig(opts.runMode, mode, viteConf)
     }
   }
 }
@@ -37,8 +40,8 @@ function getScssTransformsPlugin (opts) {
 
   const scssTransform = createScssTransform('scss', sassVariables)
   const sassTransform = createScssTransform('sass', sassVariables)
-  const scssExt = [ '.scss' ]
-  const sassExt = [ '.sass' ]
+  const scssExt = [ '.scss', '.module.scss' ]
+  const sassExt = [ '.sass', '.module.sass' ]
 
   return {
     name: 'vite:quasar:scss',
@@ -74,7 +77,7 @@ function getScriptTransformsPlugin (opts) {
     name: 'vite:quasar:script',
 
     configResolved (resolvedConfig) {
-      if (opts.devTreeshaking === false && resolvedConfig.mode === 'development') {
+      if (opts.devTreeshaking === false && resolvedConfig.mode !== 'production') {
         useTreeshaking = false
       }
     },

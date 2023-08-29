@@ -1,18 +1,18 @@
 
-const fse = require('fs-extra')
-const { join } = require('path')
+import fse from 'fs-extra'
+import { join } from 'node:path'
 
-const AppBuilder = require('../../app-builder')
-const config = require('./cordova-config')
+import { AppBuilder } from '../../app-builder.js'
+import { quasarCordovaConfig } from './cordova-config.js'
 
-const { fatal } = require('../../helpers/logger')
-const appPaths = require('../../app-paths')
-const CordovaConfigFile = require('./config-file')
-const { spawn } = require('../../helpers/spawn')
-const openIde = require('../../helpers/open-ide')
-const onShutdown = require('../../helpers/on-shutdown')
+import { fatal } from '../../utils/logger.js'
+import { CordovaConfigFile } from './config-file.js'
+import { spawn } from '../../utils/spawn.js'
+import { openIDE } from '../../utils/open-ide.js'
+import { onShutdown } from '../../utils/on-shutdown.js'
+import { fixAndroidCleartext } from '../../utils/fix-android-cleartext.js'
 
-class CapacitorBuilder extends AppBuilder {
+export class QuasarModeBuilder extends AppBuilder {
   #cordovaConfigFile = new CordovaConfigFile()
 
   async build () {
@@ -21,7 +21,7 @@ class CapacitorBuilder extends AppBuilder {
   }
 
   async #buildFiles () {
-    const viteConfig = await config.vite(this.quasarConf)
+    const viteConfig = await quasarCordovaConfig.vite(this.quasarConf)
     await this.buildWithVite('Cordova UI', viteConfig)
 
     /**
@@ -37,7 +37,7 @@ class CapacitorBuilder extends AppBuilder {
       let html = this.readFile(indexHtmlFile)
       html = html.replace(
         /(<head[^>]*)(>)/i,
-        (_, start, end) => `${start}${end}<script src="cordova.js"></script>`
+        (_, start, end) => `${ start }${ end }<script src="cordova.js"></script>`
       )
       this.writeFile(indexHtmlFile, html)
     }
@@ -47,9 +47,10 @@ class CapacitorBuilder extends AppBuilder {
 
   async #packageFiles () {
     const target = this.ctx.targetName
+    const { appPaths } = this.ctx
 
     if (target === 'android') {
-      require('../../helpers/fix-android-cleartext')('cordova')
+      fixAndroidCleartext(appPaths, 'cordova')
     }
 
     const buildPath = appPaths.resolve.cordova(
@@ -67,18 +68,23 @@ class CapacitorBuilder extends AppBuilder {
 
     this.#cordovaConfigFile.prepare(this.quasarConf)
 
-    const args = this.argv['skip-pkg'] || this.argv.ide
-      ? ['prepare', target]
-      : ['build', this.ctx.debug ? '--debug' : '--release', target]
+    const args = this.argv[ 'skip-pkg' ] || this.argv.ide
+      ? [ 'prepare', target ]
+      : [ 'build', this.quasarConf.metaConf.debugging ? '--debug' : '--release', target ]
 
     await this.#runCordovaCommand(
       args.concat(this.argv._),
       target
     )
 
-    if (this.argv['skip-pkg'] !== true) {
+    if (this.argv[ 'skip-pkg' ] !== true) {
       if (this.argv.ide) {
-        await openIde('cordova', this.quasarConf.bin, target)
+        await openIDE({
+          mode: 'cordova',
+          bin: this.quasarConf.bin,
+          target,
+          appPaths
+        })
         process.exit(0)
       }
 
@@ -92,14 +98,14 @@ class CapacitorBuilder extends AppBuilder {
 
   #runCordovaCommand (args, target) {
     if (target === 'ios' && this.quasarConf.cordova.noIosLegacyBuildFlag !== true) {
-      args.push(`--buildFlag=-UseModernBuildSystem=0`)
+      args.push('--buildFlag=-UseModernBuildSystem=0')
     }
 
     return new Promise(resolve => {
       spawn(
         'cordova',
         args,
-        { cwd: appPaths.cordovaDir },
+        { cwd: this.ctx.appPaths.cordovaDir },
         code => {
           this.#cleanup()
 
@@ -113,5 +119,3 @@ class CapacitorBuilder extends AppBuilder {
     })
   }
 }
-
-module.exports = CapacitorBuilder

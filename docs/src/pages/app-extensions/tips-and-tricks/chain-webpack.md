@@ -1,6 +1,15 @@
 ---
 title: Chain Webpack
 desc: Tips and tricks on how to use a Quasar App Extension to configure the host app to use a Webpack loader.
+scope:
+  tree:
+    l: "."
+    c:
+    - l: package.json
+    - l: src
+      c:
+      - l: index.js
+        e: Described in Index API
 ---
 
 This guide is for when you want to ensure that a [Webpack Loader](https://webpack.js.org/loaders/) is chained into the hosting app, because you depend on it for your own App Extension to work.
@@ -14,14 +23,9 @@ In order for creating an App Extension project folder, please first read the [De
 To see an example of what we will build, head over to [full example](https://github.com/quasarframework/app-extension-examples/tree/v2/chain-webpack), which is a GitHub repo with this App Extension.
 :::
 
-We will only need the /index.js script for this, because we can use the [Index API](/app-extensions/development-guide/index-api) to configure quasar.config.js from the host app to include our Webpack chaining.
+We will only need the /index.js script for this, because we can use the [Index API](/app-extensions/development-guide/index-api) to configure the quasar.config file from the host app to include our Webpack chaining.
 
-```bash
-.
-├── package.json
-└── src
-    └── index.js              # Described in Index API
-```
+<doc-tree :def="scope.tree" />
 
 And /index.js would look like this:
 

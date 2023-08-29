@@ -1,26 +1,49 @@
-import { Configuration as WebpackConfiguration } from "webpack";
-import * as WebpackChain from "webpack-chain";
+import { BuildOptions as EsbuildConfiguration } from "esbuild";
 
 export interface QuasarSsrConfiguration {
   /**
    * If a PWA should take over or just a SPA.
-   * When used in object form, you can specify Workbox options
-   *  which will be applied on top of `pwa > workboxOptions`.
-   *
    * @default false
    */
-  pwa?: boolean | object;
+  pwa?: boolean;
+
+  /**
+   * When using SSR+PWA, this is the name of the
+   * PWA index html file that the client-side fallbacks to.
+   * For production only.
+   *
+   * Do NOT use index.html as name as it will mess SSR up!
+   *
+   * @default 'offline.html'
+   */
+  pwaOfflineHtmlFilename?: string;
+
+  /**
+   * Extend/configure the Workbox GenerateSW options
+   * Specify Workbox options which will be applied on top of
+   *  `pwa > extendGenerateSWOptions()`.
+   * More info: https://developer.chrome.com/docs/workbox/the-ways-of-workbox/
+   */
+  pwaExtendGenerateSWOptions?: (config: object) => void;
+
+  /**
+   * Extend/configure the Workbox InjectManifest options
+   * Specify Workbox options which will be applied on top of
+   *  `pwa > extendInjectManifestOptions()`.
+   * More info: https://developer.chrome.com/docs/workbox/the-ways-of-workbox/
+   */
+  pwaExtendInjectManifestOptions?: (config: object) => void;
 
   /**
    * Manually serialize the store state and provide it yourself
    * as window.__INITIAL_STATE__ to the client-side (through a <script> tag)
-   * (Requires @quasar/app-webpack v3.5+)
+   * @default false
    */
   manualStoreSerialization?: boolean;
 
   /**
    * Manually inject the store state into ssrContext.state
-   * (Requires @quasar/app-webpack v3.5+)
+   * @default false
    */
   manualStoreSsrContextInjection?: boolean;
 
@@ -28,27 +51,23 @@ export interface QuasarSsrConfiguration {
    * Manually handle the store hydration instead of letting Quasar CLI do it.
    * For Pinia: store.state.value = window.__INITIAL_STATE__
    * For Vuex: store.replaceState(window.__INITIAL_STATE__)
+   * @default false
    */
   manualStoreHydration?: boolean;
 
   /**
    * Manually call $q.onSSRHydrated() instead of letting Quasar CLI do it.
    * This announces that client-side code should takeover.
+   * @default false
    */
   manualPostHydrationTrigger?: boolean;
 
   /**
    * The default port (3000) that the production server should use
    * (gets superseded if process.env.PORT is specified at runtime)
+   * @default 3000
    */
   prodPort?: number;
-
-  /**
-   * Tell browser when a file from the server should expire from cache
-   * (the default value, in ms)
-   * Has effect only when server.static() is used
-   */
-  maxAge?: number;
 
   /**
    * List of middleware files in src-ssr/middlewares
@@ -62,14 +81,8 @@ export interface QuasarSsrConfiguration {
   extendPackageJson?: (pkg: { [index in string]: any }) => void;
 
   /**
-   * Webpack config object for the Webserver
-   * which includes the SSR middleware
+   * Extend the Esbuild config that is used for the SSR webserver
+   * (which includes the SSR middlewares)
    */
-  extendWebpackWebserver?: (config: WebpackConfiguration) => void;
-
-  /**
-   * Equivalent to `extendWebpackWebserver()` but uses `webpack-chain` instead.
-   * Handles the Webserver webpack config ONLY which includes the SSR middleware
-   */
-  chainWebpackWebserver?: (chain: WebpackChain) => void;
+  extendSSRWebserverConf?: (config: EsbuildConfiguration) => void;
 }

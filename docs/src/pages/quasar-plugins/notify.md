@@ -2,14 +2,12 @@
 title: Notify
 desc: A Quasar plugin to display animated messages to users like notifications, toasts and snackbars.
 keys: Notify
+examples: Notify
 ---
+
 Notify is a Quasar plugin that can display animated messages (floating above everything in your pages) to users in the form of a notification. They are useful for alerting the user of an event and can even engage the user through actions. Also known as a toast or snackbar.
 
-## Notify API
-
 <doc-api file="Notify" />
-
-## Installation
 
 <doc-installation plugins="Notify" config="notify" />
 
@@ -39,7 +37,7 @@ setup () {
 }
 ```
 
-<doc-example title="Basic" file="Notify/Basic" />
+<doc-example title="Basic" file="Basic" />
 
 ::: tip
 If you define any actions, the notification will automatically be dismissed when the user picks it.
@@ -47,27 +45,27 @@ If you define any actions, the notification will automatically be dismissed when
 
 ### With caption
 
-<doc-example title="Caption" file="Notify/Caption" />
+<doc-example title="Caption" file="Caption" />
 
 ### With icon, avatar or spinner
 
-<doc-example title="With icon" file="Notify/Icon" />
+<doc-example title="With icon" file="Icon" />
 
-<doc-example title="With avatar" file="Notify/Avatar" />
+<doc-example title="With avatar" file="Avatar" />
 
-<doc-example title="With spinner" file="Notify/Spinner" />
+<doc-example title="With spinner" file="Spinner" />
 
 ### With actions
 
-<doc-example title="With actions" file="Notify/Actions" />
+<doc-example title="With actions" file="Actions" />
 
 ### Multiline
 
-<doc-example title="Multiline" file="Notify/Multiline" />
+<doc-example title="Multiline" file="Multiline" />
 
 ### Positioning
 
-<doc-example title="Positioning & different options" file="Notify/Positioning" />
+<doc-example title="Positioning & different options" file="Positioning" />
 
 ::: tip
 For a full list of options, check the API section.
@@ -79,15 +77,15 @@ Each notification has an underlying unique group which is computed out of the me
 
 However, if you wish to disable this behavior, specify `group: false`. In the example below, the first button triggers the same notification twice each time is clicked. The second button has grouping disabled. The third button, however, has a custom group name so each subsequent notification replaces the old one and increments the badge number.
 
-<doc-example title="Grouping" file="Notify/Grouping" />
+<doc-example title="Grouping" file="Grouping" />
 
-<doc-example title="Custom badge" file="Notify/GroupingCustomBadge" />
+<doc-example title="Custom badge" file="GroupingCustomBadge" />
 
 ### Timeout progress
 
 Should you wish, there is a way to tell the user when the notification will disappear from the screen. That's for the cases when timeout is not set to 0.
 
-<doc-example title="Timeout progress" file="Notify/TimeoutProgress" />
+<doc-example title="Timeout progress" file="TimeoutProgress" />
 
 ### Updatable notifications
 
@@ -95,17 +93,17 @@ Should you have an ongoing process and you want to inform the user of its progre
 
 Please note in the example below that we are explicitly setting "group: false" (because only non-grouped notifications can be updated) and "timeout: 0" (because we want to be in full control when the notification will be dismissed).
 
-<doc-example title="Updatable" file="Notify/Updatable" />
+<doc-example title="Updatable" file="Updatable" />
 
 ### Predefined types
 
 There are four predefined types out of the box that you can use: "positive", "negative", "warning" and "info":
 
-<doc-example title="Out of the box types" file="Notify/PredefinedTypesDefault" />
+<doc-example title="Out of the box types" file="PredefinedTypesDefault" />
 
 Furthermore, you can register your own types or even override the predefined ones. The best place to do this would be in a [@quasar/app-vite Boot File](/quasar-cli-vite/boot-files) or a [@quasar/app-webpack Boot File](/quasar-cli-webpack/boot-files).
 
-<doc-example title="Custom type" file="Notify/PredefinedTypesCustom" />
+<doc-example title="Custom type" file="PredefinedTypesCustom" />
 
 ```js
 // How to register in a boot file:
@@ -124,7 +122,7 @@ Notify.registerType('my-notif', {
 ### Using HTML
 You can use HTML on message if you specify the `html: true` prop. **Please note that this can lead to XSS attacks**, so make sure that you sanitize the message by yourself.
 
-<doc-example title="Unsafe HTML message" file="Notify/UnsafeHtml" />
+<doc-example title="Unsafe HTML message" file="UnsafeHtml" />
 
 ### Setting attributes
 You can set custom HTML attributes on the notification itself by setting the `attrs` Object property. For individual notification actions, you can directly pass them just like any other prop.
@@ -164,7 +162,7 @@ dismiss()
 ```
 
 ### Setting defaults
-There are two ways of setting default configuration that will apply to all Notifications: through quasar.config.js > framework > config > notify Object (see Installation section) or programmatically (see below).
+There are two ways of setting default configuration that will apply to all Notifications: through quasar.config file > framework > config > notify Object (see Installation section) or programmatically (see below).
 
 We'll describe setting the defaults through a [@quasar/app-vite Boot File](/quasar-cli-vite/boot-files) or a [@quasar/app-webpack Boot File](/quasar-cli-webpack/boot-files) (works the same anywhere in your code, but a boot file ensures this is run before your app starts):
 
@@ -174,10 +172,10 @@ First we create the boot file. Let's name it "notify-defaults.js".
 $ quasar new boot notify-defaults [--format ts]
 ```
 
-Add the created notify-defaults.js file to the boot array in `quasar.config.js`:
+Add the created notify-defaults.js file to the boot array in the `/quasar.config` file:
 
 ```js
-module.exports = function(ctx) {
+module.exports = function (ctx) {
   return {
     // ...
     boot: ['notify-defaults'],
@@ -199,7 +197,7 @@ Notify.setDefaults({
 ```
 
 ::: warning
-You can only set default `actions` through this method. Specifying `actions` with handlers in quasar.config.js cannot and will NOT work.
+You can only set default `actions` through this method. Specifying `actions` with handlers in the `/quasar.config` file cannot and will NOT work.
 :::
 
 We could also set the defaults in some Vue file:

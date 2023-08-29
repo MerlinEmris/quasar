@@ -1,16 +1,13 @@
-const markdownIt = require('markdown-it')
+import markdownIt from 'markdown-it'
 
-const
-  mdPluginLink = require('./md-plugin-link'),
-  mdPluginToken = require('./md-plugin-token'),
-  mdPluginBlockquote = require('./md-plugin-blockquote'),
-  mdPluginHeading = require('./md-plugin-heading'),
-  mdPluginImage = require('./md-plugin-image'),
-  mdPluginContainers = require('./md-plugin-containers'),
-  mdPluginTable = require('./md-plugin-table')
-
-const
-  highlight = require('./highlight')
+import highlight from './highlight.js'
+import mdPluginLink from './md-plugin-link.js'
+import mdPluginToken from './md-plugin-token.js'
+import mdPluginBlockquote from './md-plugin-blockquote.js'
+import mdPluginHeading from './md-plugin-heading.js'
+import mdPluginImage from './md-plugin-image.js'
+import mdPluginContainers from './md-plugin-containers.js'
+import mdPluginTable from './md-plugin-table.js'
 
 const opts = {
   html: true,
@@ -30,4 +27,4 @@ const md = markdownIt(opts)
 
 md.$data = {}
 
-module.exports = md
+export default md

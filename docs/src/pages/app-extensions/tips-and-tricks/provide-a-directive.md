@@ -1,6 +1,25 @@
 ---
 title: Providing a directive
 desc: Tips and tricks on how to provide a Vue directive to the host app of a Quasar App Extension.
+scope:
+  tree:
+    l: "."
+    c:
+    - l: package.json
+    - l: src
+      c:
+      - l: boot
+        e: folder to contain boot code
+        c:
+        - l: register-my-directive.js
+          e: boot file for directive
+      - l: directive
+        e: folder to contain directive
+        c:
+        - l: MyDirective.js
+          e: directive file
+      - l: index.js
+        e: Described in Index API
 ---
 
 This guide is for when you want to create a new directive and provide it through an App Extension, which will inject it into the hosting app.
@@ -15,16 +34,7 @@ To see an example of what we will build, head over to [MyDirective full example]
 
 Create a folder structure to keep your code modularized and organized. For instance, for a directive, create a structure that looks like this:
 
-```bash
-.
-├── package.json
-└── src
-    ├── boot                         # folder to contain 'boot' code
-    │   └── register-my-directive.js # boot file for component
-    ├── directive                    # folder to contain component
-    │   └── MyDirective.js           # directive file
-    └── index.js                     # Described in Index API
-```
+<doc-tree :def="scope.tree" />
 
 Now, you need to handle registering your Vue directive. You do this with the `/index.js` file (described in the [Index API](/app-extensions/development-guide/index-api)) that was created when you set up your new App Extension.
 
@@ -46,7 +56,7 @@ module.exports = function (api) {
     api.compatibleWith('@quasar/app-webpack', '^3.0.0')
   }
 
-  // Here we extend /quasar.config.js, so we can add
+  // Here we extend the /quasar.config file, so we can add
   // a boot file which registers our new Vue directive;
   // "extendConf" will be defined below (keep reading the tutorial)
   api.extendQuasarConf(extendConf)

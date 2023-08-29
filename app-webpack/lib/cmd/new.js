@@ -1,27 +1,21 @@
 const parseArgs = require('minimist')
 
-const path = require('path')
-const fs = require('fs')
+const path = require('node:path')
+const fs = require('node:fs')
 const fse = require('fs-extra')
 
-const { log, warn } = require('../helpers/logger')
-const appPaths = require('../app-paths')
-const storeProvider = require('../helpers/store-provider')
-const hasTypescript = require('../helpers/has-typescript')
+const { log, warn } = require('../utils/logger.js')
 
 const argv = parseArgs(process.argv.slice(2), {
   alias: {
     h: 'help',
     f: 'format'
   },
-  boolean: ['h'],
-  string: ['f'],
-  default: {
-    f: hasTypescript ? 'ts-composition' : 'default'
-  }
+  boolean: [ 'h' ],
+  string: [ 'f' ]
 })
 
-function showHelp () {
+function showHelp (returnCode) {
   console.log(`
   Description
     Quickly scaffold files.
@@ -62,26 +56,36 @@ function showHelp () {
                              * ts-class - [DEPRECATED] TS class style syntax
                              * ts - Plain TS template (for boot, store, and ssrmiddleware files)
   `)
-  process.exit(0)
+  process.exit(returnCode)
 }
 
 function showError (message, param) {
   console.log()
-  warn(`${message}: ${param}`)
-  showHelp()
+  warn(`${ message }: ${ param }`)
+  showHelp(1)
 }
 
 if (argv.help) {
-  showHelp()
+  showHelp(0)
 }
 
 console.log()
 
 if (argv._.length < 2) {
   console.log()
-  warn(`Wrong number of parameters (${argv._.length}).`)
-  showHelp()
+  warn(`Wrong number of parameters (${ argv._.length }).`)
+  showHelp(1)
   process.exit(1)
+}
+
+const { getCtx } = require('../utils/get-ctx.js')
+const { appPaths, cacheProxy } = getCtx()
+
+const storeProvider = cacheProxy.getModule('storeProvider')
+const hasTypescript = cacheProxy.getModule('hasTypescript')
+
+if (!argv.format) {
+  argv.format = argv.f = hasTypescript ? 'ts-composition' : 'default'
 }
 
 /** @type {string[]} */
@@ -97,14 +101,14 @@ const typeAliasMap = {
   b: 'boot'
 }
 
-if (![...Object.entries(typeAliasMap).flat(), 'ssrmiddleware'].includes(rawType)) {
+if (![ ...Object.entries(typeAliasMap).flat(), 'ssrmiddleware' ].includes(rawType)) {
   showError('Invalid asset type', rawType)
 }
 
 /** @type {'page'|'layout'|'component'|'store'|'boot'|'ssrmiddleware'} */
-const type = typeAliasMap[rawType] || rawType
+const type = typeAliasMap[ rawType ] || rawType
 
-if (!['default', 'ts-options', 'ts-class', 'ts-composition', 'ts-composition-setup', 'ts'].includes(format)) {
+if (![ 'default', 'ts-options', 'ts-class', 'ts-composition', 'ts-composition-setup', 'ts' ].includes(format)) {
   showError('Invalid asset format', format)
 }
 
@@ -120,7 +124,7 @@ function createFile (asset, file) {
   const relativePath = path.relative(appPaths.appDir, file)
 
   if (fs.existsSync(file)) {
-    warn(`${relativePath} already exists.`, 'SKIPPED')
+    warn(`${ relativePath } already exists.`, 'SKIPPED')
     console.log()
     return
   }
@@ -140,25 +144,25 @@ function createFile (asset, file) {
     err => {
       if (err) {
         console.warn(err)
-        warn(`Could not generate ${relativePath}.`, 'FAIL')
+        warn(`Could not generate ${ relativePath }.`, 'FAIL')
         return
       }
 
-      log(`Generated ${type}: ${relativePath}`)
+      log(`Generated ${ type }: ${ relativePath }`)
       if (asset.reference) {
-        log(`Make sure to reference it in ${asset.reference}`)
+        log(`Make sure to reference it in ${ asset.reference }`)
       }
       log()
     }
   )
 }
 
-const resolveWithExtension = (path) =>
+const resolveWithExtension = path =>
   path + (fs.existsSync(appPaths.resolve.app(path + '.ts')) ? '.ts' : '.js')
 
 const pathList = {
   router: resolveWithExtension('src/router/routes'),
-  store: resolveWithExtension(`src/${storeProvider.pathKey}/index`)
+  store: resolveWithExtension(`src/${ storeProvider.pathKey }/index`)
 }
 
 const mapping = {
@@ -177,7 +181,7 @@ const mapping = {
     ext: '.vue'
   },
   store: {
-    folder: `src/${storeProvider.pathKey}`,
+    folder: `src/${ storeProvider.pathKey }`,
     install: true,
     // Vuex module template is a folder, Pinia's is a single file
     ext: storeProvider.name === 'vuex' ? '' : isTypeScript ? '.ts' : '.js',
@@ -187,37 +191,37 @@ const mapping = {
   boot: {
     folder: 'src/boot',
     ext: isTypeScript ? '.ts' : '.js',
-    reference: 'quasar.config.js > boot'
+    reference: 'quasar.config file > boot'
   },
   ssrmiddleware: {
     folder: 'src-ssr/middlewares',
     ext: isTypeScript ? '.ts' : '.js',
-    reference: 'quasar.config.js > ssr > middlewares'
+    reference: 'quasar.config file > ssr > middlewares'
   }
 }
 
-const asset = mapping[type]
+const asset = mapping[ type ]
 
 if (asset.install) {
   const folder = appPaths.resolve.app(asset.folder)
 
   if (!storeProvider.isInstalled) {
-    storeProvider.install()
+    await storeProvider.install()
   }
 
   if (!fs.existsSync(folder)) {
     fse.ensureDir(folder)
     fse.copy(
-      appPaths.resolve.cli(`templates/store/${storeProvider.name}/${format}`),
+      appPaths.resolve.cli(`templates/store/${ storeProvider.name }/${ format }`),
       folder,
       err => {
         if (err) {
           console.warn(err)
-          warn(`Could not generate ${asset.folder}.`, 'FAIL')
+          warn(`Could not generate ${ asset.folder }.`, 'FAIL')
           return
         }
 
-        log(`Generated ${asset.folder}`)
+        log(`Generated ${ asset.folder }`)
         log()
       }
     )

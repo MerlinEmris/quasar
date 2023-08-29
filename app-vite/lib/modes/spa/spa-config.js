@@ -1,9 +1,11 @@
 
-const { createViteConfig, extendViteConfig } = require('../../config-tools')
+import { createViteConfig, extendViteConfig } from '../../config-tools.js'
 
-module.exports = {
-  vite: quasarConf => {
-    const cfg = createViteConfig(quasarConf)
+export const quasarSpaConfig = {
+  vite: async quasarConf => {
+    const cfg = await createViteConfig(quasarConf, { compileId: 'vite-spa' })
     return extendViteConfig(cfg, quasarConf, { isClient: true })
   }
 }
+
+export const modeConfig = quasarSpaConfig

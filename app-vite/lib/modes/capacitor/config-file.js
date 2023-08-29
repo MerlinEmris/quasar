@@ -1,17 +1,18 @@
-const fs = require('fs')
-const path = require('path')
+import fs from 'node:fs'
+import path from 'node:path'
+import fglob from 'fast-glob'
 
-const appPaths = require('../../app-paths')
-const { log, warn } = require('../../helpers/logger')
-const ensureConsistency = require('./ensure-consistency')
-const { capVersion } = require('./cap-cli')
+import { log, warn } from '../../utils/logger.js'
+import { ensureConsistency } from './ensure-consistency.js'
 
-const pkg = require(appPaths.resolve.app('package.json'))
+// necessary for Capacitor 4+
+import { getPackageJson } from '../../utils/get-package-json.js'
 
+// Capacitor 1 & 2
 function getAndroidMainActivity (capVersion, appId) {
   if (capVersion === 1) {
     return `
-package ${appId};
+package ${ appId };
 import android.net.http.SslError;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
@@ -29,9 +30,9 @@ public class EnableHttpsSelfSigned {
 }`
   }
 
-  // capVersion > 1
+  // capVersion 2+
   return `
-package ${appId};
+package ${ appId };
 import android.net.http.SslError;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
@@ -49,28 +50,40 @@ public class EnableHttpsSelfSigned {
   }
 }`
 }
-class CapacitorConfigFile {
+
+export class CapacitorConfigFile {
+  #ctx
   #tamperedFiles = []
 
-  prepare (quasarConf) {
-    ensureConsistency()
+  async prepare (quasarConf, target) {
+    this.#ctx = quasarConf.ctx
 
-    this.#updateCapPkg(quasarConf, pkg)
-    log(`Updated src-capacitor/package.json`)
+    const { appPaths, cacheProxy } = quasarConf.ctx
+
+    await ensureConsistency(this.#ctx)
+
+    this.#updateCapPkg(quasarConf)
+    log('Updated src-capacitor/package.json')
 
     this.#tamperedFiles = []
 
     const capJsonPath = appPaths.resolve.capacitor('capacitor.config.json')
-    const capJson = require(capJsonPath)
+    const capJson = JSON.parse(
+      fs.readFileSync(capJsonPath, 'utf-8')
+    )
+
+    const { capVersion } = await cacheProxy.getModule('capCli')
 
     this.#tamperedFiles.push({
       path: capJsonPath,
       name: 'capacitor.config.json',
-      content: this.#updateCapJson(quasarConf, capJson),
+      content: this.#updateCapJson(quasarConf, capJson, capVersion),
       originalContent: JSON.stringify(capJson, null, 2)
     })
 
     this.#save()
+
+    await this.#updateSSL(quasarConf, target, capVersion)
   }
 
   reset () {
@@ -89,15 +102,18 @@ class CapacitorConfigFile {
   #save () {
     this.#tamperedFiles.forEach(file => {
       fs.writeFileSync(file.path, file.content, 'utf8')
-      log(`Updated ${file.name}`)
+      log(`Updated ${ file.name }`)
     })
   }
 
-  #updateCapJson (quasarConf, originalCapCfg) {
+  #updateCapJson (quasarConf, originalCapCfg, capVersion) {
     const capJson = { ...originalCapCfg }
 
-    capJson.appName = quasarConf.capacitor.appName || pkg.productName || 'Quasar App'
-    capJson.bundledWebRuntime = false
+    capJson.appName = quasarConf.capacitor.appName || this.#ctx.pkg.appPkg.productName || 'Quasar App'
+
+    if (capVersion < 5) {
+      capJson.bundledWebRuntime = false
+    }
 
     if (quasarConf.ctx.dev) {
       capJson.server = capJson.server || {}
@@ -115,30 +131,63 @@ class CapacitorConfigFile {
     return JSON.stringify(capJson, null, 2)
   }
 
-  #updateCapPkg (cfg, pkg) {
+  #updateCapPkg (quasarConf) {
+    const {
+      appPaths,
+      pkg: { appPkg }
+    } = this.#ctx
+
     const capPkgPath = appPaths.resolve.capacitor('package.json')
-    const capPkg = require(capPkgPath)
+    const capPkg = JSON.parse(
+      fs.readFileSync(capPkgPath, 'utf-8')
+    )
 
     Object.assign(capPkg, {
-      name: cfg.capacitor.appName || pkg.name,
-      version: cfg.capacitor.version || pkg.version,
-      description: cfg.capacitor.description || pkg.description,
-      author: pkg.author
+      name: quasarConf.capacitor.appName || appPkg.name,
+      version: quasarConf.capacitor.version || appPkg.version,
+      description: quasarConf.capacitor.description || appPkg.description,
+      author: appPkg.author
     })
 
     fs.writeFileSync(capPkgPath, JSON.stringify(capPkg, null, 2), 'utf-8')
   }
 
-  prepareSSL (add, target) {
+  async #updateSSL (quasarConf, target, capVersion) {
+    const { appPaths, cacheProxy } = this.#ctx
+    const add = quasarConf.ctx.dev ? quasarConf.devServer.https : false
+
+    if (capVersion >= 4) {
+      const hasPlugin = getPackageJson('@jcesarmobile/ssl-skip', appPaths.capacitorDir) !== void 0
+
+      if (add ? hasPlugin : !hasPlugin) {
+        // nothing to do
+        return
+      }
+
+      const fn = `${ add ? '' : 'un' }installPackage`
+      const nameParam = add ? '@jcesarmobile/ssl-skip@^0.2.0' : '@jcesarmobile/ssl-skip'
+
+      const nodePackager = await cacheProxy.getModule('nodePackager')
+      nodePackager[ fn ](nameParam, {
+        cwd: appPaths.capacitorDir,
+        displayName: 'Capacitor (DEVELOPMENT ONLY) SSL support'
+      })
+
+      // make sure "cap sync" is run before triggering IDE or build
+      return
+    }
+
     if (target === 'ios') {
       this.#handleSSLonIOS(add)
     }
     else {
-      this.#handleSSLonAndroid(add)
+      this.#handleSSLonAndroid(add, capVersion)
     }
   }
 
   #getIosCapacitorBridgeFile () {
+    const { appPaths } = this.#ctx
+
     // we need to try multiple files because
     // @capacitor/ios changed the location during its v2
     const fileList = [
@@ -147,7 +196,7 @@ class CapacitorConfigFile {
     ]
 
     for (let i = 0; i < fileList.length; i++) {
-      let file = appPaths.resolve.capacitor(fileList[i])
+      const file = appPaths.resolve.capacitor(fileList[ i ])
       if (fs.existsSync(file)) {
         return file
       }
@@ -184,9 +233,9 @@ class CapacitorConfigFile {
       warn()
       warn()
       warn()
-      warn(`${shortFilename} not found or content is unrecognized.`)
-      warn(`Your App will revoke the devserver's SSL certificate.`)
-      warn(`Please disable HTTPS from quasar.config.js > devServer > server > type: 'https'`)
+      warn(`${ shortFilename } not found or content is unrecognized.`)
+      warn('Your App will revoke the devserver\'s SSL certificate.')
+      warn('Please disable HTTPS from quasar.config file > devServer > server > type: \'https\'')
       warn()
       warn()
       warn()
@@ -231,16 +280,17 @@ class CapacitorConfigFile {
     }
   }
 
-  #handleSSLonAndroid (add) {
-    const fglob = require('fast-glob')
+  #handleSSLonAndroid (add, capVersion) {
+    const { appPaths } = this.#ctx
+
     const capacitorSrcPath = appPaths.resolve.capacitor('android/app/src/main/java')
-    let mainActivityPath = fglob.sync(`**/MainActivity.java`, { cwd: capacitorSrcPath, absolute: true })
+    let mainActivityPath = fglob.sync('**/MainActivity.java', { cwd: capacitorSrcPath, absolute: true })
 
     if (mainActivityPath.length > 0) {
       if (mainActivityPath.length > 1) {
-        warn(`Found multiple matches for MainActivity.java file, https might not work. Using file ${mainActivityPath[0]}.`)
+        warn(`Found multiple matches for MainActivity.java file, https might not work. Using file ${ mainActivityPath[ 0 ] }.`)
       }
-      mainActivityPath = mainActivityPath[0]
+      mainActivityPath = mainActivityPath[ 0 ]
     }
     else if (mainActivityPath.length === 0) {
       warn()
@@ -256,24 +306,48 @@ class CapacitorConfigFile {
 
       const sslString = `
     if (BuildConfig.DEBUG) {
-      EnableHttpsSelfSigned.enable(${capVersion === 1 ? 'findViewById(R.id.webview)' : 'this.bridge'});
+      EnableHttpsSelfSigned.enable(${ capVersion === 1 ? 'findViewById(R.id.webview)' : 'this.bridge' });
     }
       `
 
       if (add) {
         // Allow unsigned certificates in MainActivity
-        if (!/EnableHttpsSelfSigned\.enable/.test(mainActivity)) {
-          mainActivity = mainActivity.replace(
-            /this\.init\(.*}}\);/ms,
-            match => `${match}
-${sslString}
-              `
-          )
+        if (capVersion >= 4) {
+          if (!/super\.onCreate/.test(mainActivity)) {
+            mainActivity = mainActivity.replace('{}',
+            `{
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+  }
+}`
+            )
+            mainActivity = mainActivity.replace('import com.getcapacitor.BridgeActivity;',
+            `import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;`)
+          }
+          if (!/EnableHttpsSelfSigned\.enable/.test(mainActivity)) {
+            mainActivity = mainActivity.replace(
+              /super\.onCreate\(.*\);/ms,
+              match => `${ match }
+              ${ sslString }`
+            )
+          }
+        }
+        else {
+          if (!/EnableHttpsSelfSigned\.enable/.test(mainActivity)) {
+            mainActivity = mainActivity.replace(
+              /this\.init\(.*}}\);/ms,
+              match => `${ match }
+  ${ sslString }
+                `
+            )
+          }
         }
 
         // Add helper file
         if (!fs.existsSync(enableHttpsSelfSignedPath)) {
-          const appId = mainActivity.match(/package ([\w\.]*);/)[1]
+          const appId = mainActivity.match(/package ([\w\.]*);/)[ 1 ]
 
           fs.writeFileSync(
             enableHttpsSelfSignedPath,
@@ -295,5 +369,3 @@ ${sslString}
     }
   }
 }
-
-module.exports = CapacitorConfigFile

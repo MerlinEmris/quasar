@@ -96,6 +96,12 @@ function getTypeVal (def) {
     return 'QNotifyCreateOptions | string'
   }
 
+  // Special check to avoid huge changes
+  // Fixes https://github.com/quasarframework/quasar/issues/16204
+  if (Array.isArray(def.type) && def.tsType === 'NamedColor') {
+    return def.type.map(type => `${ def.tsType }${ type === 'Array' ? '[]' : '' }`).join(' | ')
+  }
+
   return Array.isArray(def.type)
     ? def.tsType || def.type.map(type => convertTypeVal(type, def)).join(' | ')
     : convertTypeVal(def.type, def)
@@ -104,7 +110,8 @@ function getTypeVal (def) {
 function getPropDefinition ({ name, definition, docs = true, isMethodParam = false, isCompProps = false, escapeName = true, isReadonly = false }) {
   let propName = escapeName ? toCamelCase(name) : name
 
-  if (propName.startsWith('...')) {
+  const isRestParam = propName.startsWith('...')
+  if (isRestParam) {
     if (isMethodParam) {
       // A rest parameter must be of an array type. e.g. '...params: any[]'
       definition.type = 'Array'
@@ -113,8 +120,10 @@ function getPropDefinition ({ name, definition, docs = true, isMethodParam = fal
     }
     else {
       propName = `[${ propName.replace('...', '') || 'key' }: string]`
-      // Optionality with index signature types works differently and use of '?:' is invalid and not required, so always mark it as required
-      definition.required = true
+      // Optionality with index signature types works differently and use of '?:' is invalid and not required.
+      // So, we have to not use '?:' for index signature types but use '| undefined' for the property type instead.
+      // e.g. '[key: string]: any | undefined'
+      // It's being handled in the return statement on the bottom of this function.
     }
   }
 
@@ -122,14 +131,16 @@ function getPropDefinition ({ name, definition, docs = true, isMethodParam = fal
 
   let propType = getTypeVal(definition)
 
-  if (isCompProps === true && name !== 'model-value' && !definition.required && propType.indexOf(' undefined') === -1) {
+  if ((isCompProps === true || isRestParam) && name !== 'model-value' && !definition.required && propType.indexOf(' undefined') === -1) {
     propType += ' | undefined;'
   }
 
   let jsDoc = ''
 
   if (docs) {
-    jsDoc += `/**\n * ${ definition.desc }\n`
+    if (definition.desc) {
+      jsDoc += ` * ${ definition.desc }\n`
+    }
 
     if (definition.default) {
       jsDoc += ` * Default value: ${ definition.default }\n`
@@ -144,10 +155,12 @@ function getPropDefinition ({ name, definition, docs = true, isMethodParam = fal
       jsDoc += ` * @returns ${ returns.desc }\n`
     }
 
-    jsDoc += ' */\n'
+    if (jsDoc.length > 0) {
+      jsDoc = '/**\n' + jsDoc + ' */\n'
+    }
   }
 
-  return `${ jsDoc }${ isReadonly ? 'readonly ' : '' }${ propName }${ !definition.required ? '?' : '' }: ${ propType }`
+  return `${ jsDoc }${ isReadonly ? 'readonly ' : '' }${ propName }${ !definition.required && !isRestParam ? '?' : '' }: ${ propType }`
 }
 
 function getPropDefinitions ({ definitions, docs = true, areMethodParams = false, isCompProps = false }) {
@@ -182,14 +195,17 @@ function getInjectionDefinition (propertyName, typeDef, typeName) {
   return `${ propertyName }: ${ typeName }`
 }
 
+/**
+ * @returns {Promise<void>[]}
+ */
 function copyPredefinedTypes (dir, parentDir) {
-  fs.readdirSync(dir)
+  return fs.readdirSync(dir)
     .filter(file => path.basename(file).startsWith('.') !== true)
-    .forEach(file => {
+    .flatMap(async file => {
       const fullPath = path.resolve(dir, file)
       const stats = fs.lstatSync(fullPath)
       if (stats.isFile()) {
-        writeFile(
+        return writeFile(
           resolvePath(parentDir ? parentDir + file : file),
           fs.readFileSync(fullPath)
         )
@@ -199,7 +215,7 @@ function copyPredefinedTypes (dir, parentDir) {
         if (!fs.existsSync(p)) {
           fs.mkdirSync(p)
         }
-        copyPredefinedTypes(fullPath, parentDir ? parentDir + file : file + '/')
+        return copyPredefinedTypes(fullPath, parentDir ? parentDir + file : file + '/')
       }
     })
 }
@@ -258,7 +274,7 @@ function transformObject (definition, handler) {
   return result
 }
 
-function writeIndexDTS (apis) {
+function getIndexDts (apis) {
   const contents = []
   const quasarTypeContents = []
   const components = []
@@ -280,12 +296,14 @@ function writeIndexDTS (apis) {
   //  but as a normal comment
   // On Vue CLI projects `@quasar/app`/`@quasar/app-webpack`/`@quasar/app-vite` aren't available,
   //  we ignore the "missing package" error because it's the intended behaviour
-  writeLine(contents, '// @ts-ignore')
-  writeLine(contents, '/// <reference types="@quasar/app" />')
-  writeLine(contents, '/// <reference types="@quasar/app-webpack" />')
-  writeLine(contents, '/// <reference types="@quasar/app-vite" />')
+  const headerContents = []
+  writeLine(headerContents, '// @ts-ignore')
+  writeLine(headerContents, '/// <reference types="@quasar/app" />')
+  writeLine(headerContents, '/// <reference types="@quasar/app-webpack" />')
+  writeLine(headerContents, '/// <reference types="@quasar/app-vite" />')
+
   // ----
-  writeLine(contents, 'import { App, Component, ComponentPublicInstance, VNode } from \'vue\'')
+  writeLine(contents, 'import { App, Component, ComponentPublicInstance, Directive, VNode } from \'vue\'')
   writeLine(contents, 'import { ComponentConstructor, GlobalComponentConstructor } from \'./ts-helpers\'')
   writeLine(contents)
   writeLine(quasarTypeContents, 'export as namespace quasar')
@@ -299,9 +317,11 @@ function writeIndexDTS (apis) {
   writeLine(quasarTypeContents, 'export * from \'./lang\'')
   writeLine(quasarTypeContents, 'export * from \'./api\'')
   writeLine(quasarTypeContents, 'export * from \'./plugin\'')
+  writeLine(quasarTypeContents, 'export * from \'./config\'')
   writeLine(quasarTypeContents)
 
   const injections = {}
+  const quasarConfOptions = []
 
   apis.forEach(data => {
     const content = data.api
@@ -311,6 +331,18 @@ function writeIndexDTS (apis) {
     const typeValue = `${ extendsVue ? `ComponentConstructor<${ typeName }>` : typeName }`
     // Add Type to the appropriate section of types
     const propTypeDef = `${ typeName }?: ${ typeValue }`
+
+    if (content.quasarConfOptions) {
+      const confOptions = content.quasarConfOptions
+
+      const definition = getPropDefinition({
+        name: confOptions.propName,
+        definition: confOptions
+      })
+
+      quasarConfOptions.push(definition)
+    }
+
     if (content.type === 'component') {
       write(components, propTypeDef)
 
@@ -321,10 +353,64 @@ function writeIndexDTS (apis) {
       })
     }
     else if (content.type === 'directive') {
-      write(directives, propTypeDef)
+      // If it's a function, make all params required (1-level deep) since function values are working as callbacks
+      content.value.params = transformObject(content.value.params, makeRequired)
+
+      const valueType = getTypeVal(content.value)
+
+      const directiveValueType = `${ typeName }Value`
+      const argComments = content.arg ? [
+        ' * Directive argument:',
+        ' *  - type: ' + getTypeVal(content.arg),
+        ...(content.arg.default ? [ ' *  - default: ' + content.arg.default ] : []),
+        ' *  - description: ' + content.arg.desc,
+        ' *  - examples:',
+        ...content.arg.examples.map(example => ' *    - ' + example),
+        ' *'
+      ] : []
+      const modifiersComments = content.modifiers ? [
+        ' * Modifiers:',
+        ...Object.entries(content.modifiers).map(([ name, modifier ]) => [
+          ' *  - ' + name + ':',
+          ' *    - type: ' + getTypeVal(modifier),
+          ' *    - description: ' + modifier.desc,
+          ...(modifier.examples && modifier.examples.length > 0 ? [
+            ' *    - examples:',
+            ...modifier.examples.map(example => ' *      - ' + example)
+          ] : [])
+        ].join('\n')),
+        ' *'
+      ] : []
+      const getComments = (withExtra) => [
+        '/**',
+        ` * ${ content.value.desc }`,
+        ' *',
+        ...(withExtra ? [ ...argComments, ...modifiersComments ] : []),
+        ` * @see ${ content.meta.docsUrl }`,
+        ' */'
+      ].join('\n')
+
+      // We don't need the comments for args and modifiers in the value type
+      write(contents, getComments(false) + '\n')
+      writeLine(contents, `export type ${ directiveValueType } = ${ valueType }`)
+
+      const comments = getComments(true)
+
+      write(contents, comments + '\n')
+      writeLine(contents, `export type ${ typeName } = Directive<any, ${ directiveValueType }>`)
+
+      write(directives, comments)
+      writeLine(directives, `v${ typeName }: ${ typeValue }`)
+
+      writeLine(quasarTypeContents, `export const ${ typeName }: ${ typeValue }`)
+
+      // Nothing else to do for directives
+      return
     }
     else if (content.type === 'plugin') {
-      write(plugins, propTypeDef)
+      if (content.internal !== true) {
+        write(plugins, propTypeDef)
+      }
 
       const makeRequiredRecursive = (definition) => transformObject(definition, (prop) => {
         makeRequired(prop)
@@ -353,7 +439,9 @@ function writeIndexDTS (apis) {
     })
 
     // Declare class
-    writeLine(quasarTypeContents, `export const ${ typeName }: ${ typeValue }`)
+    if (content.internal !== true) {
+      writeLine(quasarTypeContents, `export const ${ typeName }: ${ typeValue }`)
+    }
 
     if (content.events) {
       for (const [ name, definition ] of Object.entries(content.events)) {
@@ -438,7 +526,7 @@ function writeIndexDTS (apis) {
 
       writeLine(contents, `export interface ${ typeName } extends ComponentPublicInstance<${ propsTypeName }> {`)
     }
-    else {
+    else if (content.internal !== true) {
       writeLine(contents, `export interface ${ typeName } {`)
 
       // Write props to the body directly
@@ -459,8 +547,10 @@ function writeIndexDTS (apis) {
     }
 
     // Close class declaration
-    writeLine(contents, '}')
-    writeLine(contents)
+    if (content.internal !== true) {
+      writeLine(contents, '}')
+      writeLine(contents)
+    }
 
     // Copy Injections for type declaration
     if (content.type === 'plugin' && content.injection) {
@@ -524,6 +614,14 @@ function writeIndexDTS (apis) {
     writeLine(contents, `${ key }: ${ getSafeInjectionKey(key) }VueGlobals`, 2)
   }
 
+  // The only way Volar offers until a related feature is implemented in Vue itself is to use the approach below.
+  // See: https://github.com/vuejs/language-tools/issues/465#issuecomment-1229166260
+  // See: https://github.com/vuejs/core/pull/3399
+  writeLine(contents)
+  writeLine(contents, '// Directives', 2)
+  writeLine(contents)
+  writeLines(contents, directives.join('\n'), 2)
+
   writeLine(contents, '}', 1)
   writeLine(contents, '}')
   writeLine(contents)
@@ -537,6 +635,11 @@ function writeIndexDTS (apis) {
   }
 
   writeLine(contents, '}', 1)
+  writeLine(contents, '}')
+  writeLine(contents)
+
+  writeLine(contents, 'declare module \'./config.d.ts\' {')
+  writeInterface(contents, 'QuasarUIConfiguration', quasarConfOptions)
   writeLine(contents, '}')
   writeLine(contents)
 
@@ -561,25 +664,75 @@ function writeIndexDTS (apis) {
   writeLine(contents, 'import \'./shim-icon-set\'')
   writeLine(contents, 'import \'./shim-lang\'')
 
-  writeFile(
-    resolvePath('index.d.ts'),
-    prettier.format(contents.join(''), { parser: 'typescript' })
-  )
+  return {
+    header: headerContents.join(''),
+    body: contents.join('')
+  }
 }
 
-module.exports.generate = function (data) {
+const ts = require('typescript')
+
+/**
+ * @throws {Error} if TypeScript validation fails
+ */
+function ensureTypeScriptValidity () {
+  const tsConfigPath = ts.findConfigFile(distRoot, ts.sys.fileExists, 'tsconfig.json')
+  if (!tsConfigPath) {
+    throw Error(resolvePath('tsconfig.json') + ' not found')
+  }
+  const { config } = ts.readConfigFile(tsConfigPath, ts.sys.readFile)
+  config.compilerOptions.noEmit = true
+  const { options, fileNames, errors } = ts.parseJsonConfigFileContent(config, ts.sys, distRoot)
+
+  const program = ts.createProgram({ options, rootNames: fileNames, configFileParsingDiagnostics: errors })
+  const emitResult = program.emit()
+  const diagnostics = [ ...ts.getPreEmitDiagnostics(program), ...emitResult.diagnostics ]
+  if (diagnostics.length === 0) {
+    return
+  }
+
+  /** @type {ts.FormatDiagnosticsHost} */
+  const formatDiagnosticsHost = {
+    getCurrentDirectory: ts.sys.getCurrentDirectory,
+    getCanonicalFileName: file => file,
+    getNewLine: () => ts.sys.newLine
+  }
+  const error = new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, formatDiagnosticsHost))
+  error.name = 'TypeScriptError'
+  throw error
+}
+
+module.exports.generate = async function (data) {
   const apis = data.plugins
     .concat(data.directives)
     .concat(data.components)
 
   try {
-    copyPredefinedTypes(typeRoot)
-    writeIndexDTS(apis)
+    await Promise.all(copyPredefinedTypes(typeRoot))
+
+    const { header, body } = getIndexDts(apis)
+    const formattedBody = prettier.format(body, { parser: 'typescript' })
+
+    // The header contains stuff that breaks TS checking.
+    // So, write only the body at first to check the validity
+    await writeFile(resolvePath('index.d.ts'), formattedBody)
+
+    ensureTypeScriptValidity()
+
+    // Write the final file
+    await writeFile(resolvePath('index.d.ts'), header + formattedBody)
   }
   catch (err) {
     logError('build.types.js: something went wrong...')
     console.log()
-    console.error(err)
+    if (err.name === 'TypeScriptError') {
+      console.error('Make sure .d.ts files in /ui/types and JSON API files in /ui/src are valid!')
+      console.log()
+      console.error(err.message)
+    }
+    else {
+      console.error(err)
+    }
     console.log()
     process.exit(1)
   }

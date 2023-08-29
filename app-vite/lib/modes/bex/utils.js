@@ -1,31 +1,31 @@
 
-const { writeFileSync, copySync, existsSync } = require('fs-extra')
-const { join } = require('path')
+import fse from 'fs-extra'
+import { join } from 'node:path'
 
-const appPaths = require('../../app-paths')
-const { warn } = require('../../helpers/logger')
+import { warn } from '../../utils/logger.js'
 
-const { name, productName, description, version } = require(appPaths.resolve.app('package.json'))
-const assetsFolder = appPaths.resolve.bex('assets')
-const iconsFolder = appPaths.resolve.bex('icons')
-const localesFolder = appPaths.resolve.bex('_locales')
-
-module.exports.createManifest = function createManifest (quasarConf) {
+export function createManifest (quasarConf) {
   let json
-  const filename = appPaths.resolve.bex('manifest.json')
+  const filename = quasarConf.metaConf.bexManifestFile
 
   try {
-    json = require(filename)
+    json = JSON.parse(
+      fse.readFileSync(filename, 'utf-8')
+    )
   }
   catch (err) {
-    warn('Could not compile BEX manifest.json. Please check its syntax.')
+    warn('Could not read BEX manifest. Please check its syntax.')
     return { err, filename }
   }
 
   if (json.manifest_version === void 0) {
-    warn('The BEX manifest.json requires a "manifest_version" prop, which is currently missing.')
+    warn('The BEX manifest requires a "manifest_version" prop, which is currently missing.')
     return { err: true, filename }
   }
+
+  const {
+    appPkg: { productName, name, description, version }
+  } = quasarConf.ctx.pkg
 
   if (json.name === void 0) { json.name = productName || name }
   if (json.short_name === void 0) { json.short_name = json.name }
@@ -50,7 +50,7 @@ module.exports.createManifest = function createManifest (quasarConf) {
     quasarConf.bex.extendBexManifestJson(json)
   }
 
-  writeFileSync(
+  fse.writeFileSync(
     join(quasarConf.build.distDir, 'manifest.json'),
     JSON.stringify(json, null, quasarConf.build.minify === true ? void 0 : 2),
     'utf-8'
@@ -59,15 +59,23 @@ module.exports.createManifest = function createManifest (quasarConf) {
   return { filename }
 }
 
-module.exports.copyBexAssets = function copyBexAssets (quasarConf) {
+export function copyBexAssets (quasarConf) {
+  const { appPaths, cacheProxy } = quasarConf.ctx
+
+  const { assetsFolder, iconsFolder, localesFolder } = cacheProxy.getRuntime('runtimeBexUtils', () => ({
+    assetsFolder: appPaths.resolve.bex('assets'),
+    iconsFolder: appPaths.resolve.bex('icons'),
+    localesFolder: appPaths.resolve.bex('_locales')
+  }))
+
   const folders = [ assetsFolder, iconsFolder ]
 
-  copySync(assetsFolder, join(quasarConf.build.distDir, 'assets'))
-  copySync(iconsFolder, join(quasarConf.build.distDir, 'icons'))
+  fse.copySync(assetsFolder, join(quasarConf.build.distDir, 'assets'))
+  fse.copySync(iconsFolder, join(quasarConf.build.distDir, 'icons'))
 
-  if (existsSync(localesFolder) === true) {
+  if (fse.existsSync(localesFolder) === true) {
     folders.push(localesFolder)
-    copySync(localesFolder, join(quasarConf.build.distDir, '_locales'))
+    fse.copySync(localesFolder, join(quasarConf.build.distDir, '_locales'))
   }
 
   return folders

@@ -1,37 +1,32 @@
-const fs = require('fs')
-const fse = require('fs-extra')
+import { existsSync } from 'node:fs'
+import fse from 'fs-extra'
 
-const appPaths = require('../../app-paths')
-const nodePackager = require('../../helpers/node-packager')
-
-function ensureWWW (forced) {
+export function ensureWWW ({ appPaths, forced }) {
   const www = appPaths.resolve.capacitor('www')
 
   forced === true && fse.removeSync(www)
 
-  if (!fs.existsSync(www)) {
+  if (!existsSync(www)) {
     fse.copySync(
       appPaths.resolve.cli('templates/capacitor/www'),
-      appPaths.resolve.capacitor('www')
+      www
     )
   }
 }
 
-function ensureDeps () {
-  if (fs.existsSync(appPaths.resolve.capacitor('node_modules'))) {
+export async function ensureDeps ({ appPaths, cacheProxy }) {
+  if (existsSync(appPaths.resolve.capacitor('node_modules'))) {
     return
   }
 
+  const nodePackager = await cacheProxy.getModule('nodePackager')
   nodePackager.install({
     cwd: appPaths.capacitorDir,
-    displayName: 'Capacitor',
+    displayName: 'Capacitor'
   })
 }
 
-module.exports = function () {
-  ensureWWW()
-  ensureDeps()
+export async function ensureConsistency (opts) {
+  ensureWWW(opts)
+  await ensureDeps(opts)
 }
-
-module.exports.ensureWWW = ensureWWW
-module.exports.ensureDeps = ensureDeps

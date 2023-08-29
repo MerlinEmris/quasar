@@ -1,9 +1,9 @@
 // These wrappers are into `app`, instead of `ui`, because they are only relevant to people
 //  using a Quasar CLI project: TS devs using `quasar` package via Vue CLI plugin don't have
-//  boot files or `quasar.config.js` where to use them.
+//  boot files or `quasar.config` file where to use them.
 // They are placed in a standalone file into `ui` because they must be reachable as `quasar/wrappers`.
 // Not being exposed from `quasar`, they won't trigger the package side-effects when required into
-//  a file evaluated by Node (in `quasar.config.js`, `configure` would be imported as
+//  a file evaluated by Node (in `quasar.config` file, `configure` would be imported as
 //  `const { configure } = require('quasar')`).
 // This is a precaution measure to avoid future hard-to-backtrack bugs.
 
@@ -15,7 +15,11 @@ declare module "quasar/wrappers" {
     RouteCallback,
     StoreCallback,
     SsrMiddlewareCallback,
-    SsrProductionExportCallback,
+    SsrCreateCallback,
+    SsrListenCallback,
+    SsrCloseCallback,
+    SsrServeStaticContentCallback,
+    SsrRenderPreloadTagCallback,
     BexBackgroundCallback,
     BexContentCallback,
     BexDomCallback,
@@ -42,9 +46,25 @@ declare module "quasar/wrappers" {
     callback: SsrMiddlewareCallback
   ): SsrMiddlewareCallback;
 
-  function ssrProductionExport(
-    callback: SsrProductionExportCallback
-  ): SsrProductionExportCallback;
+  function ssrCreate(
+    callback: SsrCreateCallback
+  ): SsrCreateCallback;
+
+  function ssrListen(
+    callback: SsrListenCallback
+  ): SsrListenCallback;
+
+  function ssrClose(
+    callback: SsrCloseCallback
+  ): SsrCloseCallback;
+
+  function ssrServeStaticContent(
+    callback: SsrServeStaticContentCallback
+  ): SsrServeStaticContentCallback;
+
+  function ssrRenderPreloadTag(
+    callback: SsrRenderPreloadTagCallback
+  ): SsrRenderPreloadTagCallback;
 
   function bexBackground(
     callback: BexBackgroundCallback

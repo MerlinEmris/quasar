@@ -1,23 +1,24 @@
+import { fileURLToPath } from 'node:url'
 
-const mdPlugin = require('./build/md')
+import mdPlugin from './build/md/index.js'
+import examplesPlugin from './build/examples.js'
+import manualChunks from './build/chunks.js'
 
-module.exports = ctx => ({
+export default ctx => ({
   eslint: {
     warnings: true,
-    errors: true
+    errors: true,
+    exclude: [
+      /(node_modules|ui[\\/])/
+    ]
   },
 
   boot: [
-    { path: 'gdpr', server: false },
-    'components'
+    { path: 'gdpr', server: false }
   ],
 
   css: [
     'app.sass'
-  ],
-
-  extras: [
-    'material-icons'
   ],
 
   build: {
@@ -27,19 +28,39 @@ module.exports = ctx => ({
     // analyze: true,
     // rebuildCache: true,
 
+    env: {
+      DOCS_BRANCH: 'dev',
+      SEARCH_INDEX: 'quasar-v2',
+      ...(ctx.dev
+        ? { FS_QUASAR_FOLDER: fileURLToPath(new URL('../ui', import.meta.url)).replace('\\', '/') }
+        : {}
+      )
+    },
+
     viteVuePluginOptions: {
       include: [/\.(vue|md)$/]
     },
 
     vitePlugins: [
-      mdPlugin
-    ]
+      mdPlugin,
+      examplesPlugin(ctx.prod)
+    ],
+
+    extendViteConf (config, { isClient }) {
+      if (ctx.prod && isClient) {
+        config.build.chunkSizeWarningLimit = 650
+        config.build.rollupOptions = {
+          output: { manualChunks }
+        }
+      }
+    }
   },
 
   devServer: {
-    // https: true,
     port: 9090,
-    open: true // opens browser window automatically
+    open: {
+      app: { name: 'google chrome' }
+    }
   },
 
   framework: {
@@ -82,13 +103,14 @@ module.exports = ctx => ({
 
   ssr: {
     pwa: ctx.prod,
-    prodPort: 3010,
+    prodPort: 3111,
     middlewares: [
       'render'
     ]
   },
 
   pwa: {
+    workboxMode: 'GenerateSW',
     injectPwaMetaTags: false,
     swFilename: 'service-worker.js',
 

@@ -16,12 +16,12 @@ interface QuasarBaseElectronConfiguration {
   extendPackageJson?: (pkg: { [index in string]: any }) => void;
 
   /**
-   * Extend the esbuild config that is used for the electron-main thread
+   * Extend the Esbuild config that is used for the electron-main thread
    */
   extendElectronMainConf?: (config: EsbuildConfiguration) => void;
 
   /**
-   * Extend the esbuild config that is used for the electron-preload thread
+   * Extend the Esbuild config that is used for the electron-preload thread
    */
   extendElectronPreloadConf?: (config: EsbuildConfiguration) => void;
 
@@ -46,9 +46,15 @@ interface QuasarBaseElectronConfiguration {
    * Specify additional parameters when yarn/npm installing
    * the UnPackaged folder, right before bundling with either
    * electron packager or electron builder;
-   * Example: [ '--ignore-optional', '--some-other-param' ]
+   * Example: [ 'install', '--production', '--ignore-optional', '--some-other-param' ]
    */
   unPackagedInstallParams?: string[];
+
+  /**
+   * Specify the debugging port to use for the Electron app when running in development mode
+   * @default 5858
+   */
+  inspectPort?: number;
 }
 
 interface QuasarElectronPackagerConfiguration

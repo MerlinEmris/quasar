@@ -1,12 +1,14 @@
 
-const appPaths = require('../../app-paths')
-const { createHeadTags } = require('./utils')
-const { static: serveStatic } = require('express')
+import { static as serveStatic } from 'express'
 
-module.exports = quasarConf => {
+import { createHeadTags } from './utils.js'
+
+export function quasarVitePluginPwaResources (quasarConf) {
   let pwaManifest = null
   let headTags
   let manifestContent
+
+  const serviceWorkerDir = quasarConf.ctx.appPaths.resolve.entry('service-worker')
 
   function updateCache () {
     if (quasarConf.htmlVariables.pwaManifest === pwaManifest) {
@@ -27,7 +29,7 @@ module.exports = quasarConf => {
         updateCache()
         return html.replace(
           /(<\/head>)/i,
-          (_, tag) => `${headTags}${tag}`
+          (_, tag) => `${ headTags }${ tag }`
         )
       }
     },
@@ -35,7 +37,7 @@ module.exports = quasarConf => {
     // runs for dev only to serve manifest and service-worker
     configureServer (server) {
       server.middlewares.use(
-        `${quasarConf.build.publicPath}${quasarConf.pwa.manifestFilename}`,
+        `${ quasarConf.build.publicPath }${ quasarConf.pwa.manifestFilename }`,
         (_, res) => {
           updateCache()
           res.setHeader('Content-Type', 'application/json')
@@ -45,7 +47,7 @@ module.exports = quasarConf => {
 
       server.middlewares.use(
         quasarConf.build.publicPath,
-        serveStatic(appPaths.resolve.app('.quasar/pwa'), { maxAge: 0 })
+        serveStatic(serviceWorkerDir, { maxAge: 0 })
       )
     }
   }

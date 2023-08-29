@@ -5,7 +5,7 @@
  *
  * You are probably looking on adding startup/initialization code.
  * Use "quasar new boot <name>" and add it there.
- * One boot file per concern. Then reference the file(s) in quasar.config.js > boot:
+ * One boot file per concern. Then reference the file(s) in quasar.config file > boot:
  * boot: ['file', ...] // do not add ".js" extension to it.
  *
  * Boot files are your "main.js"
@@ -19,16 +19,16 @@ import { <%= ctx.mode.ssr ? 'createSSRApp' : 'createApp' %> } from 'vue'
 
 <% if (ctx.mode.bex) { %>
 import { uid } from 'quasar'
-import BexBridge from './bex/bridge'
+import BexBridge from './bex-bridge.js'
 <% } %>
 
 <% const bootEntries = boot.filter(asset => asset.client !== false) %>
 
-<% extras.length > 0 && extras.filter(asset => asset).forEach(asset => { %>
+<% extras.length !== 0 && extras.filter(asset => asset).forEach(asset => { %>
 import '@quasar/extras/<%= asset %>/<%= asset %>.css'
 <% }) %>
 
-<% animations.length > 0 && animations.filter(asset => asset).forEach(asset => { %>
+<% animations.length !== 0 && animations.filter(asset => asset).forEach(asset => { %>
 import '@quasar/extras/animate/<%= asset %>.css'
 <% }) %>
 
@@ -40,7 +40,7 @@ import 'quasar/dist/quasar.<%= metaConf.css.quasarSrcExt %>'
 import 'quasar/src/css/flex-addon.sass'
 <% } %>
 
-<% css.length > 0 && css.filter(asset => asset.client !== false).forEach(asset => { %>
+<% css.length !== 0 && css.filter(asset => asset.client !== false).forEach(asset => { %>
 import '<%= asset.path %>'
 <% }) %>
 
@@ -59,23 +59,14 @@ import { addPreFetchHooks } from './client-prefetch.js'
 console.info('[Quasar] Running <%= ctx.modeName.toUpperCase() + (ctx.mode.ssr && ctx.mode.pwa ? ' + PWA' : '') %>.')
 <% } %>
 
-<% if (ctx.mode.cordova && ctx.target.ios) { %>
-import '@quasar/fastclick'
-<% } else if (ctx.mode.pwa) { %>
-// Needed only for iOS PWAs
-if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream && window.navigator.standalone) {
-  import('@quasar/fastclick')
-}
-<% } %>
-
 const publicPath = `<%= build.publicPath %>`
 
 async function start ({
   app,
   router
-  <%= store ? ', store' + (metaConf.storePackage === 'vuex' ? ', storeKey' : '') : '' %>
-}<%= bootEntries.length > 0 ? ', bootFiles' : '' %>) {
-  <% if (ctx.mode.ssr && store && metaConf.storePackage === 'vuex' && ssr.manualStoreHydration !== true) { %>
+  <%= metaConf.hasStore ? ', store' + (metaConf.storePackage === 'vuex' ? ', storeKey' : '') : '' %>
+}<%= bootEntries.length !== 0 ? ', bootFiles' : '' %>) {
+  <% if (ctx.mode.ssr && metaConf.hasStore && metaConf.storePackage === 'vuex' && ssr.manualStoreHydration !== true) { %>
     // prime the store with server-initialized state.
     // the state is determined during SSR and inlined in the page markup.
     if (<%= ctx.mode.pwa ? 'ssrIsRunningOnClientPWA !== true &&' : '' %>window.__INITIAL_STATE__ !== void 0) {
@@ -85,7 +76,7 @@ async function start ({
     }
   <% } %>
 
-  <% if (bootEntries.length > 0) { %>
+  <% if (bootEntries.length !== 0) { %>
   let hasRedirected = false
   const getRedirectUrl = url => {
     try { return router.resolve(url).href }
@@ -119,7 +110,7 @@ async function start ({
       await bootFiles[i]({
         app,
         router,
-        <%= store ? 'store,' : '' %>
+        <%= metaConf.hasStore ? 'store,' : '' %>
         ssrContext: null,
         redirect,
         urlPath,
@@ -143,13 +134,13 @@ async function start ({
   <% } %>
 
   app.use(router)
-  <% if (store && metaConf.storePackage === 'vuex') { %>app.use(store, storeKey)<% } %>
+  <% if (metaConf.hasStore && metaConf.storePackage === 'vuex') { %>app.use(store, storeKey)<% } %>
 
   <% if (ctx.mode.ssr) { %>
     <% if (ctx.mode.pwa) { %>
       if (ssrIsRunningOnClientPWA === true) {
         <% if (preFetch) { %>
-        addPreFetchHooks({ router, ssrIsRunningOnClientPWA<%= store ? ', store' : '' %> })
+        addPreFetchHooks({ router, ssrIsRunningOnClientPWA<%= metaConf.hasStore ? ', store' : '' %> })
         <% } %>
         app.mount('#q-app')
       }
@@ -159,7 +150,7 @@ async function start ({
     // and async components...
     router.isReady().then(() => {
       <% if (preFetch) { %>
-      addPreFetchHooks({ router<%= store ? ', store' : '' %>, publicPath })
+      addPreFetchHooks({ router<%= metaConf.hasStore ? ', store' : '' %>, publicPath })
       <% } %>
       app.mount('#q-app')
     })
@@ -170,7 +161,7 @@ async function start ({
   <% } else { // not SSR %>
 
     <% if (preFetch) { %>
-    addPreFetchHooks({ router<%= store ? ', store' : '' %> })
+    addPreFetchHooks({ router<%= metaConf.hasStore ? ', store' : '' %> })
     <% } %>
 
     <% if (ctx.mode.cordova) { %>
@@ -260,7 +251,7 @@ createQuasarApp(<%=
     ? (ctx.mode.pwa ? 'ssrIsRunningOnClientPWA ? createApp : createSSRApp' : 'createSSRApp')
     : 'createApp'
 %>, quasarUserOptions)
-<% if (bootEntries.length > 0) { %>
+<% if (bootEntries.length !== 0) { %>
   .then(app => {
     // eventually remove this when Cordova/Capacitor/Electron support becomes old
     const [ method, mapFn ] = Promise.allSettled !== void 0

@@ -2,10 +2,18 @@
 title: Configuring SSR
 desc: (@quasar/app-vite) How to manage your server-side rendered apps with Quasar CLI.
 related:
-  - /quasar-cli-vite/quasar-config-js
+  - /quasar-cli-vite/quasar-config-file
+scope:
+  nodeJsTree:
+    l: src-ssr
+    c:
+    - l: middlewares/
+      e: SSR middleware files
+    - l: server.js
+      e: SSR webserver
 ---
 
-## quasar.config.js
+## quasar.config file
 
 This is the place where you can configure some SSR options. Like if you want the client side to takeover as a SPA (Single Page Application -- the default behaviour), or as a PWA (Progressive Web App).
 
@@ -54,7 +62,7 @@ return {
     manualPostHydrationTrigger: false,
 
     prodPort: 3000, // The default port that the production server should use
-                    // (gets superseded if process.env.PORT is specified at runtime)
+                    // (gets superseded if process∙env∙PORT is specified at runtime)
 
     middlewares: [
       'render' // keep this as last one
@@ -68,7 +76,7 @@ return {
 Should you want to tamper with the Vite config for UI in /src:
 
 ```js
-// quasar.config.js
+// quasar.config file
 module.exports = function (ctx) {
   return {
     build: {
@@ -86,7 +94,7 @@ module.exports = function (ctx) {
 
 By default, Quasar CLI takes care of hydrating the Vuex store (if you use it) on client-side.
 
-However, should you wish to manually hydrate it yourself, you need to set quasar.config.js > ssr > manualStoreHydration: true. One good example is doing it from [a boot file](/quasar-cli-vite/boot-files):
+However, should you wish to manually hydrate it yourself, you need to set quasar.config file > ssr > manualStoreHydration: true. One good example is doing it from [a boot file](/quasar-cli-vite/boot-files):
 
 ```js
 // some_boot_file
@@ -106,7 +114,7 @@ export default ({ store }) => {
 
 By default, Quasar CLI wraps your App component and calls `$q.onSSRHydrated()` on the client-side when this wrapper component gets mounted. This is the moment that the client-side takes over. You don't need to configure anything for this to happen.
 
-However should you wish to override the moment when this happens, you need to set quasar.config.js > ssr > manualPostHydrationTrigger: true. For whatever your reason is (very custom use-case), this is an example of manually triggering the post hydration:
+However should you wish to override the moment when this happens, you need to set quasar.config file > ssr > manualPostHydrationTrigger: true. For whatever your reason is (very custom use-case), this is an example of manually triggering the post hydration:
 
 ```js
 // App.vue - Composition API
@@ -138,22 +146,15 @@ export default {
 
 Adding SSR mode to a Quasar project means a new folder will be created: `/src-ssr`, which contains SSR specific files:
 
-```bash
-.
-└── src-ssr/
-    ├── middlewares/  # SSR middleware files
-    └── server.js     # SSR webserver
-```
+<doc-tree :def="scope.nodeJsTree" />
 
 You can freely edit these files. Each of the two folders are detailed in their own doc pages (check left-side menu).
 
 Notice a few things:
 
-1. These files run in a Node context (they are NOT transpiled by Babel), so use only the ES6 features that are supported by your Node version. (https://node.green/)
+1. If you import anything from node_modules, then make sure that the package is specified in package.json > "dependencies" and NOT in "devDependencies".
 
-2. If you import anything from node_modules, then make sure that the package is specified in package.json > "dependencies" and NOT in "devDependencies".
-
-3. The `/src-ssr/middlewares` is built through a separate Esbuild config. You can extend the Esbuild configuration of these files through quasar.config.js:
+2. The `/src-ssr/middlewares` is built through a separate Esbuild config. You can extend the Esbuild configuration of these files through the `/quasar.config` file:
 
 ```js
 return {
@@ -180,12 +181,12 @@ When running on SSR mode, your application code needs to be isomorphic or "unive
 However, there are cases where you only want some boot files to run only on the server or only on the client-side. You can achieve that by specifying:
 
 ```js
-// quasar.config.js
+// quasar.config file
 return {
   // ...
   boot: [
     'some-boot-file', // runs on both server and client
-    { path: 'some-other', server: false } // this boot file gets embedded only on client-side
+    { path: 'some-other', server: false }, // this boot file gets embedded only on client-side
     { path: 'third', client: false } // this boot file gets embedded only on server-side
   ]
 }

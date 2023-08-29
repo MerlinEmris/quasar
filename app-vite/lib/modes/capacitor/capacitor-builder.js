@@ -1,55 +1,63 @@
-const { join } = require('path')
-const fse = require('fs-extra')
+import { join } from 'node:path'
+import fse from 'fs-extra'
 
-const AppBuilder = require('../../app-builder')
-const config = require('./capacitor-config')
+import { AppBuilder } from '../../app-builder.js'
+import { quasarCapacitorConfig } from './capacitor-config.js'
 
-const { log, warn, fatal } = require('../../helpers/logger')
-const appPaths = require('../../app-paths')
-const CapacitorConfigFile = require('./config-file')
-const { spawn, spawnSync } = require('../../helpers/spawn')
-const openIde = require('../../helpers/open-ide')
-const onShutdown = require('../../helpers/on-shutdown')
+import { log, warn, fatal } from '../../utils/logger.js'
+import { CapacitorConfigFile } from './config-file.js'
+import { spawn, spawnSync } from '../../utils/spawn.js'
+import { openIDE } from '../../utils/open-ide.js'
+import { onShutdown } from '../../utils/on-shutdown.js'
+import { fixAndroidCleartext } from '../../utils/fix-android-cleartext.js'
 
-const { capBin } = require('./cap-cli')
-
-class CapacitorBuilder extends AppBuilder {
+export class QuasarModeBuilder extends AppBuilder {
   #capacitorConfigFile = new CapacitorConfigFile()
   #packagedDir
 
   async build () {
-    this.#packagedDir = join(this.quasarConf.build.distDir, this.quasarConf.ctx.targetName)
+    this.#packagedDir = join(this.quasarConf.build.distDir, this.ctx.targetName)
 
     await this.#buildFiles()
     await this.#packageFiles()
   }
 
   async #buildFiles () {
-    const viteConfig = await config.vite(this.quasarConf)
+    const viteConfig = await quasarCapacitorConfig.vite(this.quasarConf)
     await this.buildWithVite('Capacitor UI', viteConfig)
     this.printSummary(viteConfig.build.outDir)
   }
 
   async #packageFiles () {
     const target = this.ctx.targetName
+    const { appPaths, cacheProxy } = this.ctx
 
     if (target === 'android') {
-      require('../../helpers/fix-android-cleartext')('capacitor')
+      fixAndroidCleartext(appPaths, 'capacitor')
     }
 
     onShutdown(() => {
       this.#cleanup()
     })
 
-    this.#capacitorConfigFile.prepare(this.quasarConf)
+    await this.#capacitorConfigFile.prepare(this.quasarConf, target)
 
-    await this.#runCapacitorCommand(this.quasarConf.capacitor.capacitorCliPreparationParams)
+    const { capBin } = await cacheProxy.getModule('capCli')
 
-    this.#capacitorConfigFile.prepareSSL(false, target)
+    await this.#runCapacitorCommand(
+      this.quasarConf.capacitor.capacitorCliPreparationParams,
+      capBin
+    )
 
-    if (this.argv['skip-pkg'] !== true) {
+    if (this.argv[ 'skip-pkg' ] !== true) {
       if (this.argv.ide === true) {
-        await openIde('capacitor', this.quasarConf.bin, target)
+        await openIDE({
+          mode: 'capacitor',
+          bin: this.quasarConf.bin,
+          target,
+          appPaths
+        })
+
         process.exit(0)
       }
 
@@ -66,12 +74,12 @@ class CapacitorBuilder extends AppBuilder {
     this.#capacitorConfigFile.reset()
   }
 
-  #runCapacitorCommand (args) {
+  #runCapacitorCommand (args, capBin) {
     return new Promise(resolve => {
       spawn(
         capBin,
         args,
-        { cwd: appPaths.capacitorDir },
+        { cwd: this.ctx.appPaths.capacitorDir },
         code => {
           this.#cleanup()
 
@@ -86,19 +94,19 @@ class CapacitorBuilder extends AppBuilder {
   }
 
   async #buildIos () {
-    const buildType = this.ctx.debug ? 'debug' : 'release'
-    const args = `xcodebuild -workspace App.xcworkspace -scheme App -configuration ${buildType} -derivedDataPath`
+    const buildType = this.quasarConf.metaConf.debugging ? 'debug' : 'release'
+    const args = `xcodebuild -workspace App.xcworkspace -scheme App -configuration ${ buildType } -derivedDataPath`
 
     log('Building iOS app...')
 
     await spawnSync(
       'xcrun',
       args.split(' ').concat([ this.#packagedDir ]).concat(this.argv._),
-      { cwd: appPaths.resolve.capacitor('ios/App') },
+      { cwd: this.ctx.appPaths.resolve.capacitor('ios/App') },
       () => {
         console.log()
-        console.log(` ⚠️  xcodebuild command failed!`)
-        console.log(` ⚠️  As an alternative, you can use the "--ide" param and build from the IDE.`)
+        console.log(' ⚠️  xcodebuild command failed!')
+        console.log(' ⚠️  As an alternative, you can use the "--ide" param and build from the IDE.')
         console.log()
 
         // cleanup build folder
@@ -108,7 +116,7 @@ class CapacitorBuilder extends AppBuilder {
   }
 
   async #buildAndroid () {
-    const buildPath = appPaths.resolve.capacitor(
+    const buildPath = this.ctx.appPaths.resolve.capacitor(
       'android/app/build/outputs'
     )
 
@@ -118,13 +126,13 @@ class CapacitorBuilder extends AppBuilder {
     log('Building Android app...')
 
     await spawnSync(
-      `./gradlew${process.platform === 'win32' ? '.bat' : ''}`,
-      [ `assemble${this.ctx.debug ? 'Debug' : 'Release'}` ].concat(this.argv._),
-      { cwd: appPaths.resolve.capacitor('android') },
+      `./gradlew${ process.platform === 'win32' ? '.bat' : '' }`,
+      [ `assemble${ this.quasarConf.metaConf.debugging ? 'Debug' : 'Release' }` ].concat(this.argv._),
+      { cwd: this.ctx.appPaths.resolve.capacitor('android') },
       () => {
         warn()
-        warn(`Gradle build failed!`)
-        warn(`As an alternative, you can use the "--ide" param and build from the IDE.`)
+        warn('Gradle build failed!')
+        warn('As an alternative, you can use the "--ide" param and build from the IDE.')
         warn()
       }
     )
@@ -132,5 +140,3 @@ class CapacitorBuilder extends AppBuilder {
     fse.copySync(buildPath, this.#packagedDir)
   }
 }
-
-module.exports = CapacitorBuilder

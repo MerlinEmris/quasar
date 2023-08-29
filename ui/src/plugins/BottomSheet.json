@@ -38,6 +38,14 @@
                   "examples": [ "my-class" ]
                 },
 
+                "style": {
+                  "type": [ "String", "Array", "Object" ],
+                  "tsType": "VueStyleProp",
+                  "desc": "Style definitions to be attributed to this action element",
+                  "examples": [ "{ padding: '2px' }" ],
+                  "addedIn": "v2.11.7"
+                },
+
                 "icon": {
                   "extends": "icon"
                 },
@@ -53,8 +61,13 @@
                 },
 
                 "avatar": {
-                  "type": "Boolean",
-                  "desc": "Display img as avatar (round borders)"
+                  "type": "String",
+                  "desc": "Path to an avatar image for this action",
+                  "examples": [
+                    "(public folder) img/avatar.png",
+                    "(relative path format) :src=\"require('./my_img.jpg')\"",
+                    "(URL) https://some-site.net/some-img.gif"
+                  ]
                 },
 
                 "label": {
@@ -65,8 +78,7 @@
 
                 "...": {
                   "type": "Any",
-                  "desc": "Any other custom props",
-                  "__exemption": [ "examples" ]
+                  "desc": "Any other custom props"
                 }
               }
             },

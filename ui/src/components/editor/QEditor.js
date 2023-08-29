@@ -76,7 +76,13 @@ export default createComponent({
     ...useFullscreenEmits,
     'update:modelValue',
     'keydown', 'click', 'mouseup', 'keyup', 'touchend',
-    'focus', 'blur'
+    'focus', 'blur',
+    'dropdownShow',
+    'dropdownHide',
+    'dropdownBeforeShow',
+    'dropdownBeforeHide',
+    'linkShow',
+    'linkHide'
   ],
 
   setup (props, { slots, emit, attrs }) {
@@ -96,7 +102,7 @@ export default createComponent({
     const editable = computed(() => !props.readonly && !props.disable)
 
     let defaultFont, offsetBottom
-    let lastEmit = props.modelValue // eslint-disable-line
+    let lastEmit = props.modelValue
 
     if (__QUASAR_SSR_SERVER__ !== true) {
       document.execCommand('defaultParagraphSeparator', false, props.paragraphTag)
@@ -233,6 +239,7 @@ export default createComponent({
       $q,
       props,
       slots,
+      emit,
       // caret (will get injected after mount)
       inFullscreen,
       toggleFullscreen,
@@ -253,7 +260,11 @@ export default createComponent({
       }
     })
 
-    const hasToolbar = computed(() => props.toolbar && props.toolbar.length > 0)
+    watch(editLinkUrl, v => {
+      emit(`link${ v ? 'Show' : 'Hide' }`)
+    })
+
+    const hasToolbar = computed(() => props.toolbar && props.toolbar.length !== 0)
 
     const keys = computed(() => {
       const

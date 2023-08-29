@@ -1,23 +1,24 @@
 
-const AppTool = require('./app-tool')
-const printDevBanner = require('./helpers/print-dev-banner')
-const encodeForDiff = require('./helpers/encode-for-diff')
-const createEntryFilesGenerator = require('./entry-files-generator')
+import { AppTool } from './app-tool.js'
+import { printDevRunningBanner } from './utils/banner.js'
+import { encodeForDiff } from './utils/encode-for-diff.js'
+import { EntryFilesGenerator } from './entry-files-generator.js'
 
-function getConfSnapshot (extractFn, quasarConf) {
-  return extractFn(quasarConf).map(item => item ? encodeForDiff(item) : '')
+function getConfSnapshot (extractFn, quasarConf, diffExtractFnMap) {
+  return extractFn(quasarConf, diffExtractFnMap).map(item => (item ? encodeForDiff(item) : ''))
 }
 
-class AppDevserver extends AppTool {
+export class AppDevserver extends AppTool {
   #diffList = {}
+  #diffExtractFnMap = {}
   #entryFiles
   #runQueue = Promise.resolve()
   #runId = 0
 
-  constructor ({ argv, ctx }) {
-    super(argv)
+  constructor (opts) {
+    super(opts)
 
-    this.#entryFiles = createEntryFilesGenerator(ctx)
+    this.#entryFiles = new EntryFilesGenerator(this.ctx)
 
     this.registerDiff('entryFiles', quasarConf => ([
       quasarConf.boot,
@@ -37,9 +38,7 @@ class AppDevserver extends AppTool {
     ]))
 
     this.registerDiff('viteUrl', quasarConf => ([
-      quasarConf.devServer.host,
-      quasarConf.devServer.port,
-      quasarConf.devServer.https
+      quasarConf.metaConf.APP_URL
     ]))
 
     this.registerDiff('vite', quasarConf => ([
@@ -49,6 +48,16 @@ class AppDevserver extends AppTool {
       quasarConf.build,
       quasarConf.sourceFiles
     ]))
+
+    this.registerDiff('esbuild', quasarConf => [
+      quasarConf.eslint,
+      quasarConf.build.env,
+      quasarConf.build.rawDefine,
+      quasarConf.metaConf.fileEnv,
+      quasarConf.build.alias,
+      quasarConf.build.minify,
+      quasarConf.build.target
+    ])
   }
 
   // to be called from inheriting class
@@ -83,22 +92,19 @@ class AppDevserver extends AppTool {
   }
 
   registerDiff (name, extractFn) {
-    this.#diffList[name] = {
+    this.#diffList[ name ] = {
       snapshot: null,
       extractFn
     }
+
+    this.#diffExtractFnMap[ name ] = extractFn
   }
 
   #diff (name, quasarConf) {
-    if (Array.isArray(name) === true) {
-      const list = name.map(entry => this.#diff(entry, quasarConf))
-      return list.some(entry => entry === true)
-    }
-
-    const target = this.#diffList[name]
+    const target = this.#diffList[ name ]
     const { snapshot, extractFn } = target
 
-    const newSnapshot = getConfSnapshot(extractFn, quasarConf)
+    const newSnapshot = getConfSnapshot(extractFn, quasarConf, this.#diffExtractFnMap)
     target.snapshot = newSnapshot
 
     if (snapshot === null) {
@@ -107,7 +113,7 @@ class AppDevserver extends AppTool {
 
     const len = newSnapshot.length
     for (let i = 0; i < len; i++) {
-      if (newSnapshot[i] !== snapshot[i]) {
+      if (newSnapshot[ i ] !== snapshot[ i ]) {
         // Leave here for debugging when needed
         // console.log(name, 'at index', i)
         // console.log('NEW >>>', newSnapshot[i])
@@ -122,8 +128,6 @@ class AppDevserver extends AppTool {
   }
 
   printBanner (quasarConf) {
-    printDevBanner(quasarConf)
+    printDevRunningBanner(quasarConf)
   }
 }
-
-module.exports = AppDevserver

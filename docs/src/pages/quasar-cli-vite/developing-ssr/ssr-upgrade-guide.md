@@ -6,6 +6,21 @@ related:
   - /quasar-cli-vite/developing-ssr/ssr-context
   - /quasar-cli-vite/developing-ssr/ssr-middleware
   - /quasar-cli-vite/developing-ssr/ssr-webserver
+scope:
+  oldTree:
+    l: src-ssr
+    c:
+    - l: index.js
+      e: Production Node webserver serving the app
+    - l: extension.js
+      e: Common code for production & development server
+  newTree:
+    l: src-ssr
+    c:
+    - l: middlewares/
+      e: SSR middleware files
+    - l: server.js
+      e: SSR webserver production export
 ---
 
 This page refers only to upgrading a Quasar UI v1 app (with Vue 2) to a Quasar UI v2 one (with Vue 3).
@@ -25,19 +40,13 @@ Please note that currently the only Nodejs supported server is [Expressjs](https
 
 ### The /src-ssr folder
 
-```bash
-# old structure
-.
-└── src-ssr/
-    ├── index.js      # Production Node webserver serving the app
-    └── extension.js  # Common code for production & development server
+The **old** structure:
 
-# NEW structure
-.
-└── src-ssr/
-    ├── middlewares/  # SSR middleware files
-    └── server.js     # SSR webserver production export
-```
+<doc-tree :def="scope.oldTree" />
+
+The **NEW** structure:
+
+<doc-tree :def="scope.newTree" />
 
 ### Performing the upgrade
 
@@ -46,22 +55,22 @@ The old `index.js` and `extension.js` have been replaced by the superior SSR mid
 So here we go:
 1. We recommend that you save the content of your current `src-ssr` folder somewhere else.
 2. Remove and add back the Quasar SSR mode (`$ quasar mode remove ssr`, `$quasar mode add ssr`).
-3. Declare the middleware files under quasar.config.js > ssr > middlewares: []. The array should look like this:
+3. Declare the middleware files under quasar.config file > ssr > middlewares: []. The array should look like this:
   ```js
   middlewares: [
     'render' // should always keep this one as last one
   ]
   ```
 4. You will then have to port the old logic by using the SSR middleware files, which should be really easy (since you'll end up copy-pasting most of the old code into the middleware files).
-5. Review quasar.config.js > ssr properties. Most of the old props have been removed and replaced by [new ones](/quasar-cli-vite/developing-ssr/configuring-ssr#quasar-config-js).
+5. Review quasar.config file > ssr properties. Most of the old props have been removed and replaced by [new ones](/quasar-cli-vite/developing-ssr/configuring-ssr#quasar-config-file).
 6. Check the new `/src-ssr/server.js` file.
 
-Also remember that the files that you create in the `src-ssr/middlewares` folder need to also be declared under quasar.config.js > ssr > middlewares. This is because their order matters, just like how the order of applying any Expressjs middleware matters too. You can use the `$ quasar new ssrmiddleware <name>` command to speed things up.
+Also remember that the files that you create in the `src-ssr/middlewares` folder need to also be declared under quasar.config file > ssr > middlewares. This is because their order matters, just like how the order of applying any Expressjs middleware matters too. You can use the `$ quasar new ssrmiddleware <name>` command to speed things up.
 
 Always keep the original `render` middleware as last one in the list.
 
 ### Tips
 
-* You might want to check out the [new configuration](/quasar-cli-vite/developing-ssr/configuring-ssr) properties available through quasar.config.js > ssr.
+* You might want to check out the [new configuration](/quasar-cli-vite/developing-ssr/configuring-ssr) properties available through quasar.config file > ssr.
 * You might want to check out the [ssrContext](/quasar-cli-vite/developing-ssr/ssr-context) page which describes in detail what properties you can use from it.
 * You might want to check out the [SSR Webserver](/quasar-cli-vite/developing-ssr/ssr-webserver) page which describes in detail what server.js can do for you.

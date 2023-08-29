@@ -7,6 +7,7 @@
 
   "quasarConfOptions": {
     "propName": "notify",
+    "type": "Object",
     "definition": {
       "type": {
         "type": "String",
@@ -19,7 +20,7 @@
       },
 
       "textColor": {
-        "extends": "color"
+        "extends": "text-color"
       },
 
       "message": {
@@ -64,7 +65,8 @@
       },
 
       "spinner": {
-        "type": "Boolean",
+        "type": [ "Boolean", "Component" ],
+        "configFileType": [ "Boolean", "String" ],
         "desc": "Useful for notifications that are updated; Displays a Quasar spinner instead of an avatar or icon; If value is Boolean 'true' then the default QSpinner is shown",
         "examples": [ true, "QSpinnerBars" ]
       },
@@ -165,8 +167,48 @@
       "timeout": {
         "type": "Number",
         "desc": "Amount of time to display (in milliseconds)",
-        "default": 5000,
-        "examples": [ 2500 ]
+        "default": 5000
+      },
+
+      "actions": {
+        "type": "Array",
+        "tsType": "QNotifyAction",
+        "desc": "Notification actions (buttons); Unless 'noDismiss' is true, clicking/tapping on the button will close the notification; Also check 'closeBtn' convenience prop",
+        "definition": {
+          "handler": {
+            "type": "Function",
+            "configFileType": null,
+            "desc": "Function to be executed when the button is clicked/tapped",
+            "params": null,
+            "returns": null,
+            "examples": [
+              "() => { console.log('button clicked') }"
+            ]
+          },
+          "noDismiss": {
+            "type": "Boolean",
+            "desc": "Do not dismiss the notification when the button is clicked/tapped"
+          },
+          "...": {
+            "type": "Any",
+            "desc": "Any other QBtn prop expect 'onClick' (use 'handler' instead, only possible with UI config)",
+            "examples": [ "label: 'Learn more'", "color: 'primary'" ]
+          }
+        },
+        "examples": [
+          "[ { label: 'Show', handler: () => {}, 'aria-label': 'Button label' }, { icon: 'map', handler: () => {}, color: 'yellow' }, { label: 'Learn more', noDismiss: true, handler: () => {} } ]"
+        ]
+      },
+
+      "onDismiss": {
+        "type": "Function",
+        "configFileType": null,
+        "desc": "Function to call when notification gets dismissed",
+        "params": null,
+        "returns": null,
+        "examples": [
+          "() => { console.log('Dismissed') }"
+        ]
       },
 
       "closeBtn": {
@@ -205,7 +247,7 @@
             },
 
             "textColor": {
-              "extends": "color"
+              "extends": "text-color"
             },
 
             "message": {
@@ -421,7 +463,7 @@
             "tsType": "QNotifyUpdateOptions",
             "required": false,
             "desc": "Notification properties that will be shallow merged to previous ones in order to update the non-grouped notification; (See 'opts' param of 'create()' for object properties, except 'group' and 'position')",
-            "__exemption": [ "definition", "examples" ]
+            "__exemption": [ "definition" ]
           }
         },
         "returns": null
@@ -435,8 +477,8 @@
           "type": "Object",
           "tsType": "QNotifyOptions",
           "required": true,
-          "desc": "Notification options (See 'opts' param of 'create()' for object properties)",
-          "__exemption": [ "definition", "examples" ]
+          "desc": "Notification options except 'ignoreDefaults' (See 'opts' param of 'create()' for object properties)",
+          "__exemption": [ "definition" ]
         }
       }
     },
@@ -455,8 +497,8 @@
           "type": "Object",
           "tsType": "QNotifyOptions",
           "required": true,
-          "desc": "Notification options (See 'opts' param of 'create()' for object properties)",
-          "__exemption": [ "definition", "examples" ]
+          "desc": "Notification options except 'ignoreDefaults' (See 'opts' param of 'create()' for object properties)",
+          "__exemption": [ "definition" ]
         }
       }
     }

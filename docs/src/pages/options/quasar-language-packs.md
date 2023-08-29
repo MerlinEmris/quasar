@@ -7,6 +7,10 @@ related:
 ---
 A Quasar Language Pack refers to the internationalization of Quasar's own components, some of which have labels.
 
+<doc-api file="Lang" />
+
+<doc-installation title="Configuration" config="lang" />
+
 ::: warning
 It should be noted that what is described below is the internationalization of Quasar components only. If you need to internationalize your own components, read [App Internationalization](/options/app-internationalization) documentation page.
 :::
@@ -26,7 +30,7 @@ Unless configured otherwise (see below), Quasar uses the `en-US` Language Pack b
 If the default Quasar Language Pack is not dynamically determined (does not depend on cookies for example), then you can:
 
 #### Quasar CLI
-Edit `/quasar.config.js`:
+Edit the `/quasar.config` file:
 
 ```js
 framework: {
@@ -129,7 +133,7 @@ export default async () => {
 }
 ```
 
-Then register this boot file into `/quasar.config.js`:
+Then register this boot file into the `/quasar.config` file:
 
 ```js
 boot: [

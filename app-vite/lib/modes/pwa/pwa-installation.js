@@ -1,14 +1,10 @@
 
-const fs = require('fs')
-const fse = require('fs-extra')
+import fs from 'node:fs'
+import fse from 'fs-extra'
 
-const appPaths = require('../../app-paths')
-const { log, warn } = require('../../helpers/logger')
-const nodePackager = require('../../helpers/node-packager')
-const hasTypescript = require('../../helpers/has-typescript')
-const hasEslint = require('../../helpers/has-eslint')
+import { log, warn } from '../../utils/logger.js'
 
-const defaultVersion = '^6.5.0'
+const defaultVersion = '^7.0.0'
 
 const pwaDeps = {
   'workbox-core': defaultVersion,
@@ -20,31 +16,38 @@ const pwaDeps = {
   'workbox-build': defaultVersion
 }
 
-function isInstalled () {
+export function isModeInstalled (appPaths) {
   return fs.existsSync(appPaths.pwaDir)
 }
 
-function add (silent) {
-  if (isInstalled()) {
+export async function addMode ({
+  ctx: { appPaths, cacheProxy },
+  silent
+}) {
+  if (isModeInstalled(appPaths)) {
     if (silent !== true) {
       warn('PWA support detected already. Aborting.')
     }
     return
   }
 
+  const nodePackager = await cacheProxy.getModule('nodePackager')
   nodePackager.installPackage(
-    Object.entries(pwaDeps).map(([name, version]) => `${name}@${version}`),
-    { isDev: true, displayName: 'PWA dependencies' }
+    Object.entries(pwaDeps).map(([ name, version ]) => `${ name }@${ version }`),
+    { isDevDependency: true, displayName: 'PWA dependencies' }
   )
 
   log('Creating PWA source folder...')
 
+  const hasTypescript = await cacheProxy.getModule('hasTypescript')
+  const { hasEslint } = await cacheProxy.getModule('eslint')
   const format = hasTypescript ? 'ts' : 'default'
+
   fse.copySync(
-    appPaths.resolve.cli(`templates/pwa/${format}`),
+    appPaths.resolve.cli(`templates/pwa/${ format }`),
     appPaths.pwaDir,
     // Copy .eslintrc.js only if the app has ESLint
-    { filter: src => hasEslint || !src.endsWith('/.eslintrc.js') }
+    hasEslint === true ? { filter: src => !src.endsWith('/.eslintrc.cjs') } : void 0
   )
 
   fse.copySync(
@@ -62,8 +65,10 @@ function add (silent) {
   log('PWA support was added')
 }
 
-function remove () {
-  if (!isInstalled()) {
+export async function removeMode ({
+  ctx: { appPaths, cacheProxy }
+}) {
+  if (!isModeInstalled(appPaths)) {
     warn('No PWA support detected. Aborting.')
     return
   }
@@ -71,15 +76,10 @@ function remove () {
   log('Removing PWA source folder')
   fse.removeSync(appPaths.pwaDir)
 
+  const nodePackager = await cacheProxy.getModule('nodePackager')
   nodePackager.uninstallPackage(Object.keys(pwaDeps), {
     displayName: 'PWA dependencies'
   })
 
   log('PWA support was removed')
-}
-
-module.exports = {
-  isInstalled,
-  add,
-  remove
 }

@@ -1,4 +1,3 @@
-
 const parseArgs = require('minimist')
 
 const argv = parseArgs(process.argv.slice(2), {
@@ -7,113 +6,132 @@ const argv = parseArgs(process.argv.slice(2), {
     m: 'mode',
 
     d: 'depth',
-    p: 'path',
+    p: 'node:path',
+
+    t: 'thread',
 
     h: 'help'
   },
-  boolean: ['h'],
-  string: ['c', 'm', 'p'],
+  boolean: [ 'h' ],
+  string: [ 'c', 'm', 'p', 't' ],
   default: {
     c: 'dev',
     m: 'spa',
-    d: 5
+    d: 2
   }
 })
 
 if (argv.help) {
   console.log(`
   Description
-    Inspect Quasar generated Webpack config
+    Inspect Quasar generated Webpack/Esbuild config
 
   Usage
     $ quasar inspect
     $ quasar inspect -c build
-    $ quasar inspect -m electron -p 'module.rules'
+    $ quasar inspect -m electron -p 'build.outDir'
 
   Options
     --cmd, -c        Quasar command [dev|build] (default: dev)
     --mode, -m       App mode [spa|ssr|pwa|bex|cordova|capacitor|electron] (default: spa)
-    --depth, -d      Number of levels deep (default: 5)
+    --depth, -d      Number of levels deep (default: 2)
     --path, -p       Path of config in dot notation
                         Examples:
                           -p module.rules
                           -p plugins
+    --thread, -t     Display only one specific app mode config thread
     --help, -h       Displays this message
   `)
   process.exit(0)
 }
 
-require('../helpers/ensure-argv')(argv, 'inspect')
-require('../helpers/banner')(argv, argv.cmd)
+const { ensureArgv } = require('../utils/ensure-argv.js')
+ensureArgv(argv, 'inspect')
 
-const { log, fatal } = require('../helpers/logger')
+const { getCtx } = require('../utils/get-ctx.js')
+const ctx = getCtx({
+  mode: argv.mode,
+  target: argv.mode === 'cordova' || argv.mode === 'capacitor'
+    ? 'android'
+    : void 0,
+  debug: argv.debug,
+  dev: argv.cmd === 'dev',
+  prod: argv.cmd === 'build'
+})
 
-if (argv.mode !== 'spa') {
-  const getMode = require('../mode/index')
-  if (getMode(argv.mode).isInstalled !== true) {
-    fatal('Requested mode for inspection is NOT installed.')
-  }
+const { displayBanner } = require('../utils/banner.js')
+displayBanner({ argv, ctx, cmd: argv.cmd })
+
+const { log, fatal } = require('../utils/logger.js')
+
+const { isModeInstalled } = require(`../modes/${ argv.mode }/${ argv.mode }-installation.js`)
+
+if (isModeInstalled(ctx.appPaths) !== true) {
+  fatal('Requested mode for inspection is NOT installed.')
 }
-
-const QuasarConfFile = require('../quasar-conf-file')
-const { splitWebpackConfig } = require('../webpack/symbols')
 
 const depth = parseInt(argv.depth, 10) || Infinity
 
-async function inspect () {
-  const extensionRunner = require('../app-extension/extensions-runner')
-  const getQuasarCtx = require('../helpers/get-quasar-ctx')
+const { QuasarConfigFile } = require('../quasar-config-file.js')
+const quasarConfFile = new QuasarConfigFile({
+  ctx,
+  port: argv.port,
+  host: argv.hostname
+})
 
-  const ctx = getQuasarCtx({
-    mode: argv.mode,
-    target: argv.mode === 'cordova' || argv.mode === 'capacitor'
-      ? 'android'
-      : void 0,
-    debug: argv.debug,
-    dev: argv.cmd === 'dev',
-    prod: argv.cmd === 'build'
-  })
+async function run () {
+  await quasarConfFile.init()
 
-  // register app extensions
-  await extensionRunner.registerExtensions(ctx)
+  const quasarConf = await quasarConfFile.read()
 
-  const quasarConfFile = new QuasarConfFile(ctx)
+  const { modeConfig } = require(`../modes/${ argv.mode }/${ argv.mode }-config.js`)
 
-  try {
-    await quasarConfFile.prepare()
-  }
-  catch (e) {
-    console.log(e)
-    fatal('quasar.config.js has JS errors', 'FAIL')
+  const cfgEntries = []
+  let threadList = Object.keys(modeConfig)
+
+  if (argv.thread) {
+    if (threadList.includes(argv.thread) === false) {
+      fatal('Requested thread for inspection is NOT available for selected mode.')
+    }
+
+    threadList = [ argv.thread ]
   }
 
-  await quasarConfFile.compile()
-
-  const util = require('util')
-  const cfgEntries = splitWebpackConfig(quasarConfFile.webpackConf, argv.mode)
-
-  if (argv.path) {
-    const dot = require('dot-prop')
-    cfgEntries.forEach(entry => {
-      entry.webpack = dot.get(entry.webpack, argv.path)
+  for (const name of threadList) {
+    cfgEntries.push({
+      name,
+      object: await modeConfig[ name ](quasarConf)
     })
   }
 
+  if (argv.path) {
+    const dot = require('dot-prop')
+    cfgEntries.forEach(cfgEntry => {
+      cfgEntry.object = dot.get(cfgEntry.object, argv.path)
+    })
+  }
+
+  const util = require('node:util')
+
   cfgEntries.forEach(cfgEntry => {
+    const tool = cfgEntry.object.devtool !== void 0
+      ? 'Webpack'
+      : 'Esbuild'
+
     console.log()
-    log(`Showing Webpack config for "${cfgEntry.name}" with depth of ${depth}`)
+    log(`Showing "${ cfgEntry.name }" config (for ${ tool }) with depth of ${ depth }`)
     console.log()
     console.log(
-      util.inspect(cfgEntry.webpack, {
+      util.inspect(cfgEntry.object, {
         showHidden: true,
-        depth: depth,
+        depth,
         colors: true,
         compact: false
       })
     )
   })
 
-  console.log(`\n  Depth used: ${depth}. You can change it with "-d" parameter.\n`)
+  console.log(`\n  Depth used: ${ depth }. You can change it with "-d" / "--depth" parameter.\n`)
 }
 
-inspect()
+run()

@@ -1,6 +1,39 @@
 ---
 title: App Vuex Store
 desc: (@quasar/app-webpack) How to manage the Vuex Store in a Quasar App.
+scope:
+  tree:
+    l: src
+    c:
+    - l: store
+      e: Vuex Store
+      c:
+      - l: index.js
+        e: Vuex Store definition
+      - l: "<folder>"
+        e: Vuex Store Module...
+      - l: "<folder>"
+        e: Vuex Store Module...
+  newStore:
+    l: src
+    c:
+    - l: store
+      c:
+      - l: index.js
+        e: Vuex Store definition
+      - l: showcase
+        e: Module "showcase"...
+        c:
+        - l: index.js
+          e: Gluing the module together
+        - l: actions.js
+          e: Module actions
+        - l: getters.js
+          e: Module getters
+        - l: mutations.js
+          e: Module mutations
+        - l: state.js
+          e: Module state
 ---
 
 ::: danger
@@ -13,14 +46,7 @@ The recommended way to go if you want components sharing state is Vuex. Take a l
 
 We won't go into details on how to configure or use Vuex since it has great docs. Instead we'll just show you what the folder structure looks like when using it on a Quasar project.
 
-```bash
-.
-└── src/
-    └── store/               # Vuex Store
-        ├── index.js         # Vuex Store definition
-        ├── <folder>         # Vuex Store Module...
-        └── <folder>         # Vuex Store Module...
-```
+<doc-tree :def="scope.tree" />
 
 By default, if you choose to use Vuex when you create a project folder with Quasar CLI, it will set you up on using Vuex modules. Each sub-folder of `/src/store` represents a Vuex Module.
 
@@ -41,18 +67,7 @@ It will create a folder in `/src/store` named by "store_name" from the command a
 
 Let's say that you want to create a "showcase" Vuex Module. You issue `$ quasar new store showcase`. You then notice the newly created `/src/store/showcase` folder, which holds the following files:
 
-```bash
-.
-└── src/
-    └── store/
-        ├── index.js         # Vuex Store definition
-        └── showcase         # Module "showcase"
-            ├── index.js     # Gluing the module together
-            ├── actions.js   # Module actions
-            ├── getters.js   # Module getters
-            ├── mutations.js # Module mutations
-            └── state.js     # Module state
-```
+<doc-tree :def="scope.newStore" />
 
 We've created the new Vuex Module, but we haven't yet informed Vuex to use it. So we edit `/src/store/index.js` and add a reference to it:
 
@@ -144,10 +159,10 @@ import { useStore } from 'src/store';
 
 export default defineComponent({
   setup () {
-    const $store = useStore()
+    const $store = useStore();
     // You can use the $store, example: $store.state.someStoreModule.someData
-  }
-})
+  },
+});
 </script>
 ```
 
@@ -179,17 +194,17 @@ class RootState {
 }
 
 class RootGetters extends Getters<RootState> {
-  get count() {
+  get count () {
     return this.state.count;
   }
 
-  multiply(multiplier: number) {
+  multiply (multiplier: number) {
     return this.state.count * multiplier;
   }
 }
 
 class RootMutations extends Mutations<RootState> {
-  add(payload: number) {
+  add (payload: number) {
     this.state.count += payload;
   }
 }
@@ -208,7 +223,7 @@ const rootConfig = {
 
 export const root = new Module(rootConfig);
 
-export default store(function (/* { ssrContext } */) {
+export default store (function (/* { ssrContext } */) {
   const rootStore = createStore(root, {
     strict: !!process.env.DEBUGGING,
     // plugins: []
@@ -229,11 +244,11 @@ Using the typed store inside Vue files is pretty straightforward, here is an exa
 
 ```vue
 <template>
-    <q-page class="column items-center justify-center">
-        <q-btn @click="store.mutations.add(3)">Add count</q-btn>
-        <div>Count: {{ store.getters.count }}</div>
-        <div>Multiply(5): {{ store.getters.multiply(5) }}</div>
-    </q-page>
+  <q-page class="column items-center justify-center">
+    <q-btn @click="store.mutations.add(3)" label="Add count" />
+    <div>Count: {{ store.getters.count }}</div>
+    <div>Multiply(5): {{ store.getters.multiply(5) }}</div>
+  </q-page>
 </template>
 
 <script lang="ts">
@@ -241,12 +256,11 @@ import { defineComponent } from 'vue';
 import { useStore, root } from 'src/store';
 
 export default defineComponent({
-    name: 'PageIndex',
-    setup() {
-        const store = useStore()
-
-        return { store };
-    }
+  name: 'PageIndex',
+  setup () {
+    const store = useStore();
+    return { store };
+  },
 });
 </script>
 ```
@@ -258,9 +272,9 @@ When using the store in Boot files, it is also possible to use a typed store. He
 import { boot } from 'quasar/wrappers'
 import { root } from 'src/store'
 
-export default boot(({store}) => {
-    root.context(store).mutations.add(5)
-})
+export default boot(({ store }) => {
+  root.context(store).mutations.add(5);
+});
 ```
 
 #### Using a typed store in Prefetch
@@ -272,13 +286,13 @@ import { defineComponent } from 'vue';
 import { root } from 'src/store';
 
 export default defineComponent({
-    name: 'PageIndex',
-    preFetch({ store }) {
-        root.context(store).mutations.add(5)
-    },
-    setup() {
-       //
-    }
+  name: 'PageIndex',
+  preFetch ({ store }) {
+    root.context(store).mutations.add(5);
+  },
+  setup () {
+    //
+  },
 });
 </script>
 ```
@@ -294,41 +308,41 @@ Suppose we have the following module example:
 ```js
 // store/modules/index.ts
 // simple module example, with everything in one file
-import { Getters, Mutations, Actions, Module, createComposable } from 'vuex-smart-module'
+import { Getters, Mutations, Actions, Module, createComposable } from 'vuex-smart-module';
 
 class ModuleState { greeting = 'Hello'}
 
 class ModuleGetters extends Getters<ModuleState> {
-  get greeting() {
-    return this.state.greeting
+  get greeting () {
+    return this.state.greeting;
   }
 }
 
 class ModuleMutations extends Mutations<ModuleState> {
-  morning() {
-    this.state.greeting = 'Good morning!'
+  morning () {
+    this.state.greeting = 'Good morning!';
   }
 }
 
 class ModuleActions extends Actions<ModuleState, ModuleGetters, ModuleMutations, ModuleActions> {
-    waitForIt(payload: number) {
-        return new Promise<void>(resolve => {
-            setTimeout(() => {
-                this.commit('morning')
-                resolve()
-            }, payload)
-        })
-    }
+  waitForIt (payload: number) {
+    return new Promise<void>(resolve => {
+      setTimeout(() => {
+        this.commit('morning');
+        resolve();
+      }, payload);
+    });
+  }
 }
 
 export const admin = new Module({
   state: ModuleState,
   getters: ModuleGetters,
   mutations: ModuleMutations,
-  actions: ModuleActions
-})
+  actions: ModuleActions,
+});
 
-export const useAdmin = createComposable(admin)
+export const useAdmin = createComposable(admin);
 ```
 
 We then want to only load this module, when a certain route component is visited. We can do that in (at least) two different ways.
@@ -343,10 +357,10 @@ Our `Admin.vue` file then looks like this:
 
 ```html
 <template>
-    <q-page class="column items-center justify-center">
-        {{ greeting }}
-        <q-btn to="/">Home</q-btn>
-    </q-page>
+  <q-page class="column items-center justify-center">
+    {{ greeting }}
+    <q-btn to="/" label="Home" />
+  </q-page>
 </template>
 
 <script lang="ts">
@@ -356,41 +370,47 @@ import { admin, useAdmin } from 'src/store/module';
 import { useStore } from 'vuex';
 
 export default defineComponent({
-    name: 'PageIndex',
-    preFetch({ store }) {
-        if (!store.hasModule('admin'))
-            registerModule(store, 'admin', 'admin/', admin)
-    },
-    setup() {
-        const $store = useStore()
-        // eslint-disable-next-line
-        if (!process.env.SERVER && !$store.hasModule('admin') && (window as any).__INITIAL_STATE__) {
-            // This works both for SSR and SPA
-            registerModule($store, ['admin'], 'admin/', admin, {
-                preserveState: true
-            })
-        }
-        const adminStore = useAdmin()
+  name: 'PageIndex',
 
-        const greeting = adminStore.getters.greeting
-
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-expect-error
-        // eslint-disable-next-line
-        if (module.hot) module.hot.accept(['src/store/module'], () => {
-            // This is necessary to prevent errors when this module is hot reloaded
-            unregisterModule($store, admin)
-            registerModule($store, ['admin'], 'admin/', admin, {
-                preserveState: true
-            })
-        })
-
-        onUnmounted(() => {
-            unregisterModule($store, admin)
-        })
-
-        return { greeting };
+  preFetch ({ store }) {
+    if (!store.hasModule('admin')) {
+      registerModule(store, 'admin', 'admin/', admin);
     }
+  },
+
+  setup() {
+    const $store = useStore();
+
+    // eslint-disable-next-line
+    if (!process.env.SERVER && !$store.hasModule('admin') && (window as any).__INITIAL_STATE__) {
+      // This works both for SSR and SPA
+      registerModule($store, ['admin'], 'admin/', admin, {
+        preserveState: true,
+      });
+    }
+
+    const adminStore = useAdmin();
+    const greeting = adminStore.getters.greeting;
+
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
+    // eslint-disable-next-line
+    if (module.hot) {
+      module.hot.accept(['src/store/module'], () => {
+        // This is necessary to prevent errors when this module is hot reloaded
+        unregisterModule($store, admin);
+        registerModule($store, ['admin'], 'admin/', admin, {
+          preserveState: true,
+        });
+      });
+    }
+
+    onUnmounted(() => {
+      unregisterModule($store, admin);
+    });
+
+    return { greeting };
+  },
 });
 </script>
 ```
@@ -404,40 +424,40 @@ The example below is designed to work with both SSR and SPA. If you only use SPA
 :::
 
 ```js
-import { boot } from 'quasar/wrappers'
-import { admin } from 'src/store/module'
-import { registerModule, unregisterModule } from 'vuex-smart-module'
+import { boot } from 'quasar/wrappers';
+import { admin } from 'src/store/module';
+import { registerModule, unregisterModule } from 'vuex-smart-module';
 
 // If you have never run your app in SSR mode, the ssrContext parameter will be untyped,
 // Either remove the argument or run the project in SSR mode once to generate the SSR store flag
-export default boot(({store, router, ssrContext}) => {
-    router.beforeEach((to, from, next) => {
-        if (to.fullPath.startsWith('/admin')) {
-            if (!store.hasModule('admin')) {
-                registerModule(store, ['admin'], 'admin/', admin, {
-                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                    // @ts-expect-error
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-                    preserveState: !ssrContext && !from.matched.length && Boolean(window.__INITIAL_STATE__),
-                })
-            }
-        } else {
-            if (store.hasModule('admin'))
-                unregisterModule(store, admin)
-        }
-        next()
-    })
-})
+export default boot(({ store, router, ssrContext }) => {
+  router.beforeEach((to, from, next) => {
+    if (to.fullPath.startsWith('/admin')) {
+      if (!store.hasModule('admin')) {
+        registerModule(store, ['admin'], 'admin/', admin, {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          preserveState: !ssrContext && !from.matched.length && Boolean(window.__INITIAL_STATE__),
+        })
+      }
+    } else if (store.hasModule('admin')) {
+      unregisterModule(store, admin);
+    }
+
+    next();
+  });
+});
 ```
 
 In your components, you can then just use the dynamic module, without having to worry about registering it. For example:
 
 ```html
 <template>
-    <q-page class="column items-center justify-center">
-        {{ greeting }}
-        <q-btn to="/">Home</q-btn>
-    </q-page>
+  <q-page class="column items-center justify-center">
+    {{ greeting }}
+    <q-btn to="/" label="Home" />
+  </q-page>
 </template>
 
 <script lang="ts">
@@ -445,13 +465,13 @@ import { defineComponent } from 'vue';
 import { useAdmin } from 'src/store/module';
 
 export default defineComponent({
-    name: 'PageIndex',
-    setup() {
-        const adminStore = useAdmin()
-        const greeting = adminStore.getters.greeting
+  name: 'PageIndex',
+  setup() {
+    const adminStore = useAdmin();
+    const greeting = adminStore.getters.greeting;
 
-        return { greeting };
-    }
+    return { greeting };
+  },
 });
 </script>
 ```

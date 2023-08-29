@@ -1,11 +1,13 @@
+
 export default {
   input: 'src/index.js',
   output: {
-    file: 'dist/index.js',
+    file: 'dist/index.cjs',
     format: 'cjs'
   },
   external: [
     'vite',
-    /quasar[\\/][dist|package\.json]/,
+    /quasar[\\/][dist|package.json]/,
+    /node:/
   ]
 }

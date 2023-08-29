@@ -119,7 +119,7 @@ export default createComponent({
   },
 
   emits: [
-    'request', 'virtual-scroll',
+    'request', 'virtualScroll',
     ...useFullscreenEmits,
     ...useTableRowExpandEmits,
     ...useTableRowSelectionEmits
@@ -353,7 +353,7 @@ export default createComponent({
 
         scrollTarget.scrollTop = offsetTop
 
-        emit('virtual-scroll', {
+        emit('virtualScroll', {
           index: toIndex,
           from: 0,
           to: innerPagination.value.rowsPerPage - 1,
@@ -363,7 +363,7 @@ export default createComponent({
     }
 
     function onVScroll (info) {
-      emit('virtual-scroll', info)
+      emit('virtualScroll', info)
     }
 
     function getProgress () {
@@ -569,7 +569,7 @@ export default createComponent({
 
         if (topLeft !== void 0) {
           child.push(
-            h('div', { class: 'q-table-control' }, [
+            h('div', { class: 'q-table__control' }, [
               topLeft(marginalsScope.value)
             ])
           )
@@ -777,7 +777,7 @@ export default createComponent({
         }, getPaginationDiv(child))
       }
 
-      if (child.length > 0) {
+      if (child.length !== 0) {
         return h('div', { class: bottomClass }, child)
       }
     }

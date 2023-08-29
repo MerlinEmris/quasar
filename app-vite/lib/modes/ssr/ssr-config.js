@@ -1,26 +1,33 @@
 
-const { join } = require('path')
+import { join } from 'node:path'
+import { mergeConfig as mergeViteConfig } from 'vite'
 
-const {
-  createViteConfig, extendViteConfig, mergeViteConfig,
+import {
+  createViteConfig, extendViteConfig,
   createNodeEsbuildConfig, extendEsbuildConfig
-} = require('../../config-tools')
+} from '../../config-tools.js'
 
-const appPaths = require('../../app-paths')
+import { getBuildSystemDefine } from '../../utils/env.js'
 
-const pwaConfig = require('../pwa/pwa-config')
-const quasarVitePluginPwaResources = require('../pwa/vite-plugin.pwa-resources')
+import { quasarPwaConfig } from '../pwa/pwa-config.js'
+import { quasarVitePluginPwaResources } from '../pwa/vite-plugin.pwa-resources.js'
 
-module.exports = {
-  viteClient: quasarConf => {
-    let cfg = createViteConfig(quasarConf, 'ssr-client')
+export const quasarSsrConfig = {
+  viteClient: async quasarConf => {
+    let cfg = await createViteConfig(quasarConf, { compileId: 'vite-ssr-client' })
+    const { appPaths } = quasarConf.ctx
 
     cfg = mergeViteConfig(cfg, {
-      define: {
-        'process.env.CLIENT': true,
-        'process.env.SERVER': false,
-        __QUASAR_SSR_PWA__: quasarConf.ssr.pwa === true
-      },
+      define: getBuildSystemDefine({
+        buildEnv: {
+          CLIENT: true,
+          SERVER: false
+        },
+        buildRawDefine: {
+          __QUASAR_SSR_PWA__: quasarConf.ssr.pwa === true
+        }
+      }),
+      appType: 'custom',
       server: {
         middlewareMode: true
       },
@@ -40,37 +47,37 @@ module.exports = {
     // dev has js entry-point, while prod has index.html
     if (quasarConf.ctx.dev) {
       cfg.build.rollupOptions = cfg.build.rollupOptions || {}
-      cfg.build.rollupOptions.input = appPaths.resolve.app('.quasar/client-entry.js')
+      cfg.build.rollupOptions.input = appPaths.resolve.entry('client-entry.js')
     }
 
     return extendViteConfig(cfg, quasarConf, { isClient: true })
   },
 
-  viteServer: quasarConf => {
-    let cfg = createViteConfig(quasarConf, 'ssr-server')
+  viteServer: async quasarConf => {
+    let cfg = await createViteConfig(quasarConf, { compileId: 'vite-ssr-server' })
+    const { appPaths } = quasarConf.ctx
 
     cfg = mergeViteConfig(cfg, {
       target: quasarConf.build.target.node,
-      define: {
-        'process.env.CLIENT': false,
-        'process.env.SERVER': true,
-        __QUASAR_SSR_PWA__: quasarConf.ssr.pwa === true
-      },
+      define: getBuildSystemDefine({
+        buildEnv: {
+          CLIENT: false,
+          SERVER: true
+        },
+        buildRawDefine: {
+          __QUASAR_SSR_PWA__: quasarConf.ssr.pwa === true
+        }
+      }),
+      appType: 'custom',
       server: {
         hmr: false, // let client config deal with it
-        middlewareMode: 'ssr'
-      },
-      ssr: {
-        noExternal: [
-          /\/esm\/.*\.js$/,
-          /\.(es|esm|esm-browser|esm-bundler).js$/
-        ]
+        middlewareMode: true
       },
       build: {
         ssr: true,
         outDir: join(quasarConf.build.distDir, 'server'),
         rollupOptions: {
-          input: appPaths.resolve.app('.quasar/server-entry.js')
+          input: appPaths.resolve.entry('server-entry.mjs')
         }
       }
     })
@@ -78,33 +85,44 @@ module.exports = {
     return extendViteConfig(cfg, quasarConf, { isServer: true })
   },
 
-  webserver: quasarConf => {
-    const cfg = createNodeEsbuildConfig(quasarConf, { cacheSuffix: 'ssr-webserver' })
+  webserver: async quasarConf => {
+    const cfg = await createNodeEsbuildConfig(quasarConf, { compileId: 'node-ssr-webserver', format: 'esm' })
+    const { appPaths } = quasarConf.ctx
 
-    cfg.define['process.env.CLIENT'] = false
-    cfg.define['process.env.SERVER'] = true
+    Object.assign(cfg.define, getBuildSystemDefine({
+      buildEnv: {
+        CLIENT: false,
+        SERVER: true
+      }
+    }))
 
     if (quasarConf.ctx.dev) {
-      cfg.entryPoints = [ appPaths.resolve.app('.quasar/ssr-dev-webserver.js') ]
-      cfg.outfile = appPaths.resolve.app('.quasar/ssr/compiled-dev-webserver.js')
+      cfg.entryPoints = [ appPaths.resolve.entry('ssr-dev-webserver.mjs') ]
+      cfg.outfile = appPaths.resolve.entry('compiled-dev-webserver.mjs')
     }
     else {
       cfg.external = [
-        ...cfg.external,
+        ...(cfg.external || []),
         'vue/server-renderer',
         'vue/compiler-sfc',
         './render-template.js',
         './quasar.manifest.json',
-        './server/server-entry.js'
+
+        // based on project's package.json > type (module | commonjs), one of the
+        // following will be compiled:
+        './server/server-entry.js',
+        './server/server-entry.mjs'
       ]
 
-      cfg.entryPoints = [ appPaths.resolve.app('.quasar/ssr-prod-webserver.js') ]
+      cfg.entryPoints = [ appPaths.resolve.entry('ssr-prod-webserver.mjs') ]
       cfg.outfile = join(quasarConf.build.distDir, 'index.js')
     }
 
-    return extendEsbuildConfig(cfg, quasarConf.ssr, 'SSRWebserver')
+    return extendEsbuildConfig(cfg, quasarConf.ssr, quasarConf.ctx, 'extendSSRWebserverConf')
   },
 
-  workbox: pwaConfig.workbox,
-  customSw: pwaConfig.customSw
+  workbox: quasarPwaConfig.workbox,
+  customSw: quasarPwaConfig.customSw
 }
+
+export const modeConfig = quasarSsrConfig

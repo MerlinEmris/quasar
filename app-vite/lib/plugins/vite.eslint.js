@@ -1,11 +1,10 @@
 
-const { normalizePath } = require('vite')
-const getLinter = require('../eslint')
-const { warning, error, success } = require('../helpers/logger')
+import { normalizePath } from 'vite'
 
-const errorFiles = new Set()
+import { warning, error, success } from '../utils/logger.js'
+import { getLinter } from '../utils/eslint.js'
 
-module.exports = function eslintPlugin (quasarConf, getLinterOpts) {
+export async function quasarViteESLintPlugin (quasarConf, compileId) {
   const {
     eslint,
     filter,
@@ -13,27 +12,28 @@ module.exports = function eslintPlugin (quasarConf, getLinterOpts) {
     warnings,
     fix,
     outputFixes,
-    formatter
-  } = getLinter(quasarConf, getLinterOpts)
+    formatter,
+    errorFiles
+  } = await getLinter(quasarConf, compileId)
 
   return {
     name: 'quasar:eslint',
 
-    async transform(_, id) {
+    async transform (_, id) {
       if (filter(id) === false || await eslint.isPathIgnored(normalizePath(id)) === true) {
         return null
       }
 
       const report = await eslint.lintFiles(id)
 
-      if (report[0] === void 0) {
+      if (report[ 0 ] === void 0) {
         return null
       }
 
       const {
         errorCount, fixableErrorCount,
         warningCount, fixableWarningCount
-      } = report[0]
+      } = report[ 0 ]
 
       if (errors === true && errorCount !== 0) {
         const { format } = await eslint.loadFormatter(formatter)

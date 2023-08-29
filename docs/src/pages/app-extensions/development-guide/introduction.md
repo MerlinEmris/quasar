@@ -1,6 +1,70 @@
 ---
 title: App Extension Development
 desc: How to setup your machine for a Quasar App Extension development and getting started quickly.
+scope:
+  appExtensionTree:
+    l: "."
+    c:
+    - l: package.json
+    - l: src
+      c:
+      - l: index.js
+        e: Described in Index API
+      - l: install.js
+        e: Described in Install API
+      - l: prompts.js
+        e: Described in Prompts API
+      - l: uninstall.js
+        e: Described in Uninstall API
+  uiKitTree:
+    l: "."
+    c:
+    - l: app-extension
+      c:
+      - l: package.json
+      - l: src
+        c:
+        - l: index.js
+          e: Described in Index API
+        - l: install.js
+          e: Described in Install API
+        - l: prompts.js
+          e: Described in Prompts API
+        - l: uninstall.js
+          e: Described in Uninstall API
+    - l: ui
+      c:
+      - l: package.json
+      - l: build
+        e: build scripts
+      - l: dev
+        e: Quasar app for testing component/directive
+      - l: src
+        c:
+        - l: components
+          e: "(optional) Folder for your component(s)"
+          c:
+          - l: Component.js
+            e: "(optional) Code for your component(s)"
+          - l: Component.sass
+            e: "(optional) Sass for your component(s)"
+        - l: directives
+          e: "(optional) Folder for your directive(s)"
+          c:
+          - l: Directive.js
+            e: "(optional) Code for your directive(s)"
+          - l: Directive.sass
+            e: "(optional) Sass for your directive(s)"
+        - l: index.common.js
+          e: CommonJS entry point
+        - l: index.esm.js
+          e: ESM entry point
+        - l: index.umd.js
+          e: UMD entry point
+        - l: vue-plugin.js
+          e: Exports the associated Vue plugin
+        - l: index.sass
+          e: Exports the associated SASS files
 ---
 
 This section of the docs deals with creating your own App Extensions.
@@ -16,7 +80,7 @@ An App Extension is an npm package. There are two official kits for creating App
 
 ### App Extension (AE) kit
 
-If your app extension does _not_ involve UI (i.e. does _not_ have components or directives) then use the AE kit. An example of this would be an extension that creates a boot file only. 
+If your app extension does _not_ involve UI (i.e. does _not_ have components or directives) then use the AE kit. An example of this would be an extension that creates a boot file only.
 
 ### UI kit
 
@@ -45,40 +109,13 @@ For the sake of this documentation page, let's assume we answered with `my-ext` 
 
 Based on your response, Quasar CLI will create a folder for your App Extension’s source code that will have the following structure:
 
-```bash
-# app-extension kit
-.
-├── package.json
-└── src
-    ├── index.js      # Described in Index API
-    ├── install.js    # Described in Install API
-    ├── prompts.js    # Described in Prompts API
-    └── uninstall.js  # Described in Uninstall API
+The app-extension kit:
 
-# ui kit
-.
-├── app-extension
-│   ├── package.json
-│   └── src
-│       ├── index.js           # Described in Index API
-│       ├── install.js         # Described in Install API
-│       ├── prompts.js         # Described in Prompts API
-│       └── uninstall.js       # Described in Uninstall API
-└── ui
-    ├── package.json
-    ├── build                  # build scripts
-    ├── dev                    # Quasar app for testing component/directive
-    └── src
-        ├── components         # (optional) Folder for your component(s)
-        │   ├── Component.js   # (optional) Code for your component(s)
-        │   └── Component.sass # (optional) Sass for your component(s)
-        ├── directives         # (optional) Folder for your directive(s)
-        │   ├── Directive.js   # (optional) Code for your directive(s)
-        │   └── Directive.sass # (optional) Sass for your directive(s)
-        ├── mixins             # (optional) Where to put your mixin sources
-        ├── index.js           # Exports and Vue injection
-        └── index.sass         # Sass imports
-```
+<doc-tree :def="scope.appExtensionTree" />
+
+The ui kit:
+
+<doc-tree :def="scope.uiKitTree" />
 
 Except for `src/index.js` (from the `app-extension` kit) or `app-extension/src/index.js` (from the `ui` kit) , all the other files are optional. You can manually add or remove them at any point in time.
 
@@ -144,10 +181,10 @@ $ quasar ext invoke my-ext
 
 This will trigger the installation of our new App Extension. You need to redo these two steps each time you make changes and you want to test them.
 
-Additionally, if you would like to have HMR (hot module reload) capabilities in your test app while developing your App Extension, then your `quasar.config.js > devServer > watchFiles` would look like this:
+Additionally, if you would like to have HMR (hot module reload) capabilities in your test app while developing your App Extension, then your `quasar.config file > devServer > watchFiles` would look like this:
 
 ```js
-// quasar.config.js for
+// quasar.config file for
 // Quasar CLI with Webpack (@quasar/app-webpack)
 
 devServer: {
@@ -161,7 +198,7 @@ devServer: {
 
 #### @quasar/app-webpack
 
-You might want to extend the Webpack config. Assuming you are using the [`chainWebpack`](/quasar-cli-webpack/handling-webpack#usage-with-quasar-conf-js) method, your `quasar.config.js > build > chainWebpack` should look like this:
+You might want to extend the Webpack config. Assuming you are using the [`chainWebpack`](/quasar-cli-webpack/handling-webpack#usage-with-quasar-conf-js) method, your `quasar.config file > build > chainWebpack` should look like this:
 
 ```js
 chainWebpack (chain) {
@@ -175,7 +212,7 @@ chainWebpack (chain) {
 
 #### @quasar/app-vite
 
-You might want to extend the Vite config. Assuming you are using the [`extendViteConf`](/quasar-cli-vite/handling-vite#usage-with-quasar-conf-js) method, your `quasar.config.js > build > extendViteConf` should look like this:
+You might want to extend the Vite config. Assuming you are using the [`extendViteConf`](/quasar-cli-vite/handling-vite#usage-with-quasar-conf-js) method, your `quasar.config file > build > extendViteConf` should look like this:
 
 ```js
 extendViteConf (viteConf, { isClient, isServer }) {
@@ -203,7 +240,7 @@ You need to redo these install steps and issue the uninvoke command each time yo
 
 In the sections above we described how to test the prompts, install and uninstall scripts. Now it's time for the index script, which is the heart of your App Extension.
 
-This is where you can tamper with all `quasar.config.js` options, extend the Webpack configuration, register Quasar CLI commands, start up external services required for developing your app and many more.
+This is where you can tamper with all `quasar.config` file options, extend the Webpack configuration, register Quasar CLI commands, start up external services required for developing your app and many more.
 
 As a result, the index script is run each time `$ quasar dev` and `$ quasar build` are executed.
 

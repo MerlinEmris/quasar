@@ -1,5 +1,5 @@
-import { Configuration as WebpackConfiguration } from "webpack";
-import * as WebpackChain from "webpack-chain";
+import { BuildOptions as EsbuildConfiguration } from "esbuild";
+import { GenerateSWOptions, InjectManifestOptions } from "workbox-build";
 
 // Derived from https://developer.mozilla.org/en-US/docs/Web/Manifest
 type PwaManifestDirection = "ltr" | "rtl" | "auto";
@@ -44,6 +44,7 @@ interface PwaManifestIcon {
 }
 
 interface PwaManifestOptions {
+  id?: string;
   background_color?: string;
   categories?: string[];
   description?: string;
@@ -65,64 +66,62 @@ interface PwaManifestOptions {
   theme_color?: string;
 }
 
-interface PwaMetaVariablesEntry {
-  tagName: string;
-  attributes: object;
-  closeTag?: boolean;
+interface InjectPwaMetaTagsParams {
+  pwaManifest: PwaManifestOptions;
+  publicPath: string;
 }
 
 /**
  * This is the place where you can configure
- * [Workbox](https://developers.google.com/web/tools/workbox/modules/workbox-webpack-plugin)’s
+ * [Workbox](https://developers.google.com/web/tools/workbox)’s
  * behavior and also tweak your `manifest.json`.
  */
 export interface QuasarPwaConfiguration {
-  workboxPluginMode?: "GenerateSW" | "InjectManifest";
-  /**
-   * Full option list can be found
-   *  [here](https://developers.google.com/web/tools/workbox/modules/workbox-webpack-plugin#full_generatesw_config).
-   */
-  workboxOptions?: object;
-  manifest?: PwaManifestOptions;
+  workboxMode?: "GenerateSW" | "InjectManifest";
 
   /**
-   * Webpack config object for the custom service worker ONLY (`/src-pwa/custom-service-worker`)
-   *  when pwa > workboxPluginMode is set to InjectManifest
+   * Generated service worker filename to use (needs to end with .js)
+   * @default sw.js
    */
-  extendWebpackCustomSW?: (config: WebpackConfiguration) => void;
-  /**
-   * Equivalent to `extendWebpackCustomSW()` but uses `webpack-chain` instead,
-   *  for the custom service worker ONLY (`/src-pwa/custom-service-worker`)
-   *  when pwa > workboxPluginMode is set to InjectManifest
-   */
-  chainWebpackCustomSW?: (chain: WebpackChain) => void;
+  swFilename?: string;
 
   /**
-   * @default
-   * ```typescript
-   * {
-   *    appleMobileWebAppCapable: 'yes';
-   *    appleMobileWebAppStatusBarStyle: 'default';
-   *    appleTouchIcon120: 'icons/apple-icon-120x120.png';
-   *    appleTouchIcon180: 'icons/apple-icon-180x180.png';
-   *    appleTouchIcon152: 'icons/apple-icon-152x152.png';
-   *    appleTouchIcon167: 'icons/apple-icon-167x167.png';
-   *    appleSafariPinnedTab: 'icons/safari-pinned-tab.svg';
-   *    msapplicationTileImage: 'icons/ms-icon-144x144.png';
-   *    msapplicationTileColor: '#000000';
-   * }
-   * ```
+   * PWA manifest filename to use (relative to /src-pwa or absolute path)
+   * @default manifest.json
    */
-  metaVariables?: {
-    appleMobileWebAppCapable: string;
-    appleMobileWebAppStatusBarStyle: string;
-    appleTouchIcon120: string;
-    appleTouchIcon180: string;
-    appleTouchIcon152: string;
-    appleTouchIcon167: string;
-    appleSafariPinnedTab: string;
-    msapplicationTileImage: string;
-    msapplicationTileColor: string;
-  };
-  metaVariablesFn?: (manifest?: PwaManifestOptions) => PwaMetaVariablesEntry[];
+  manifestFilename?: string;
+
+  /**
+   * Should you need some dynamic changes to the /src-pwa/manifest.json,
+   * use this method to do it.
+   */
+  extendManifestJson?: (json: PwaManifestOptions) => void;
+
+  /**
+   * Does the PWA manifest tag requires crossorigin auth?
+   * @default false
+   */
+  useCredentialsForManifestTag?: boolean;
+
+  /**
+   * Auto inject the PWA meta tags?
+   * @default true
+   */
+  injectPwaMetaTags?: boolean | ((injectParam: InjectPwaMetaTagsParams) => string);
+
+  /**
+   * Extend the Esbuild config that is used for the custom service worker
+   * (if using it through workboxMode: 'InjectManifest')
+   */
+  extendPWACustomSWConf?: (config: EsbuildConfiguration) => void;
+
+  /**
+   * Extend/configure the Workbox GenerateSW options
+   */
+  extendGenerateSWOptions?: (config: GenerateSWOptions) => void;
+
+  /**
+   * Extend/configure the Workbox InjectManifest options
+   */
+  extendInjectManifestOptions?: (config: InjectManifestOptions) => void;
 }

@@ -11,7 +11,7 @@ const spawn = require('child_process').spawn
 
 const logger = require('./logger')
 
-const TEMPLATING_FILE_EXTENSIONS = [ '', '.json', '.js', '.ts', '.vue', '.md', '.html', '.sass' ]
+const TEMPLATING_FILE_EXTENSIONS = [ '', '.json', '.js', '.cjs', '.ts', '.vue', '.md', '.html', '.sass' ]
 
 module.exports.join = join
 module.exports.logger = logger
@@ -203,15 +203,23 @@ module.exports.lintFolder = function (scope) {
   )
 }
 
+const quasarConfigFilenameList = [
+  'quasar.config.js',
+  'quasar.config.mjs',
+  'quasar.config.ts',
+  'quasar.config.cjs',
+  'quasar.conf.js' // legacy
+]
+
 module.exports.ensureOutsideProject = function () {
   let dir = process.cwd()
 
   while (dir.length && dir[dir.length - 1] !== sep) {
-    if (
-      existsSync(join(dir, 'quasar.conf.js')) ||
-      existsSync(join(dir, 'quasar.config.js'))
-    ) {
-      logger.fatal(`Error. This command must NOT be executed inside of a Quasar project folder.`)
+    for (const name of quasarConfigFilenameList) {
+      const filename = join(dir, name)
+      if (existsSync(filename)) {
+        logger.fatal(`Error. This command must NOT be executed inside of a Quasar project folder.`)
+      }
     }
 
     dir = normalize(join(dir, '..'))
