@@ -1,9 +1,9 @@
 import { computed, watch } from 'vue'
 
-import useRouterLink, { useRouterLinkProps } from '../../composables/private/use-router-link.js'
+import useRouterLink, { useRouterLinkProps } from '../../composables/private.use-router-link/use-router-link.js'
 import useTab, { useTabProps, useTabEmits } from './use-tab.js'
 
-import { createComponent } from '../../utils/private/create.js'
+import { createComponent } from '../../utils/private.create/create.js'
 
 export default createComponent({
   name: 'QRouteTab',
@@ -30,9 +30,10 @@ export default createComponent({
       }
     )
 
-    watch(() => `${ props.name } | ${ props.exact } | ${ (routeData.resolvedLink.value || {}).href }`, () => {
-      $tabs.verifyRouteModel()
-    })
+    watch(
+      () => `${ props.name } | ${ props.exact } | ${ (routeData.resolvedLink.value || {}).href }`,
+      $tabs.verifyRouteModel
+    )
 
     return () => renderTab(routeData.linkTag.value, routeData.linkAttrs.value)
   }

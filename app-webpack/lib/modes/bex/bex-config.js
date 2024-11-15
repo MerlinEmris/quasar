@@ -1,39 +1,31 @@
 const { join } = require('node:path')
-const { readFileSync, writeFileSync } = require('node:fs')
 
 const {
   createWebpackChain, extendWebpackChain,
   createBrowserEsbuildConfig, extendEsbuildConfig
 } = require('../../config-tools.js')
 
-const { resolveToCliDir } = require('../../utils/cli-runtime.js')
+const { getBuildSystemDefine } = require('../../utils/env.js')
 const { injectWebpackHtml } = require('../../utils/html-template.js')
 
-const contentScriptTemplate = readFileSync(
-  resolveToCliDir('templates/bex/entry-content-script.js'),
-  'utf-8'
-)
-
-async function createScript (quasarConf, scriptName, entry) {
-  const cfg = await createBrowserEsbuildConfig(quasarConf, { compileId: `browser-bex-${ scriptName }` })
-
-  cfg.entryPoints = [
-    entry || quasarConf.ctx.appPaths.resolve.entry(`bex-entry-${ scriptName }.js`)
-  ]
-
-  cfg.outfile = join(quasarConf.build.distDir, `${ scriptName }.js`)
-
-  return extendEsbuildConfig(cfg, quasarConf.bex, quasarConf.ctx, 'extendBexScriptsConf')
+function generateDefaultEntry (quasarConf) {
+  return {
+    name: 'file', // or subdir/file (regardless of OS)
+    from: quasarConf.ctx.appPaths.resolve.bex('file.js'),
+    to: join(quasarConf.build.distDir, 'file.js')
+  }
 }
 
 const quasarBexConfig = {
   webpack: async quasarConf => {
     const webpackChain = await createWebpackChain(quasarConf, { compileId: 'webpack-bex', threadName: 'BEX UI' })
 
-    webpackChain.output
-      .path(
-        join(quasarConf.build.distDir, 'www')
-      )
+    if (quasarConf.ctx.target.firefox) {
+      webpackChain.output
+        .path(
+          join(quasarConf.build.distDir, 'www')
+        )
+    }
 
     // We shouldn't minify BEX code. This option is disabled by default for BEX mode in quasar-conf.js.
     // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/Source_Code_Submission#Provide_your_extension_source_code
@@ -44,20 +36,24 @@ const quasarBexConfig = {
     return extendWebpackChain(webpackChain, quasarConf, { isClient: true })
   },
 
-  contentScript: (quasarConf, name) => {
-    const entry = quasarConf.ctx.appPaths.resolve.entry(`bex-entry-content-script-${ name }.js`)
+  async bexScript (quasarConf, entry = generateDefaultEntry(quasarConf)) {
+    const cfg = await createBrowserEsbuildConfig(quasarConf, { compileId: `bex:script:${ entry.name }` })
 
-    writeFileSync(
-      entry,
-      contentScriptTemplate.replace('__NAME__', name),
-      'utf-8'
-    )
+    cfg.define = {
+      ...cfg.define,
+      ...getBuildSystemDefine({
+        buildEnv: {
+          __QUASAR_BEX_SCRIPT_NAME__: entry.name,
+          __QUASAR_BEX_SERVER_PORT__: quasarConf.devServer.port || 0
+        }
+      })
+    }
 
-    return createScript(quasarConf, name, entry)
-  },
+    cfg.entryPoints = [ entry.from ]
+    cfg.outfile = entry.to
 
-  backgroundScript: quasarConf => createScript(quasarConf, 'background'),
-  domScript: quasarConf => createScript(quasarConf, 'dom')
+    return extendEsbuildConfig(cfg, quasarConf.bex, quasarConf.ctx, 'extendBexScriptsConf')
+  }
 }
 
 module.exports.quasarBexConfig = quasarBexConfig

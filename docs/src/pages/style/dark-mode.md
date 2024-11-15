@@ -11,6 +11,7 @@ Dark Mode is a supplemental mode that can be used to display mostly dark surface
 The advantages of Dark Mode are that:
 
 * It enhances visual ergonomics by reducing eye strain.
+* It is important for eye protection also.
 * Provides comfort of use at night or in dark environments.
 * It conserves battery power mainly if the device screen is OLED or AMOLED, thereby enabling device usage for longer periods without charging.
 

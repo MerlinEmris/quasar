@@ -1,10 +1,10 @@
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 
 module.exports.HtmlTransformPlugin = class HtmlTransformPlugin {
-  #transformHtml
+  #transformHtmlFn
 
-  constructor (transformHtml) {
-    this.#transformHtml = transformHtml
+  constructor (transformHtmlFn) {
+    this.#transformHtmlFn = transformHtmlFn
   }
 
   apply (compiler) {
@@ -12,8 +12,14 @@ module.exports.HtmlTransformPlugin = class HtmlTransformPlugin {
       const hooks = HtmlWebpackPlugin.getHooks(compilation)
 
       hooks.beforeEmit.tapAsync('webpack-plugin-html-addons', (data, callback) => {
-        data.html = this.#transformHtml(data.html)
-        callback(null, data)
+        this.#transformHtmlFn(data.html)
+          .then(html => {
+            data.html = html
+            callback(null, data)
+          })
+          .catch(err => {
+            callback(err, data)
+          })
       })
     })
   }

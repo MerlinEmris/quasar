@@ -2,6 +2,7 @@ const { AppTool } = require('./app-tool.js')
 const { printDevRunningBanner } = require('./utils/banner.js')
 const { encodeForDiff } = require('./utils/encode-for-diff.js')
 const { EntryFilesGenerator } = require('./entry-files-generator.js')
+const { generateTypes } = require('./types-generator.js')
 
 function getConfSnapshot (extractFn, quasarConf, diffExtractFnMap) {
   return extractFn(quasarConf, diffExtractFnMap).map(item => (item ? encodeForDiff(item) : ''))
@@ -40,6 +41,11 @@ module.exports.AppDevserver = class AppDevserver extends AppTool {
         : ''
     ]))
 
+    this.registerDiff('types', quasarConf => ([
+      quasarConf.build.typescript,
+      quasarConf.build.alias
+    ]))
+
     this.registerDiff('webpackUrl', quasarConf => ([
       quasarConf.metaConf.APP_URL
     ]))
@@ -68,6 +74,10 @@ module.exports.AppDevserver = class AppDevserver extends AppTool {
   run (quasarConf, __isRetry) {
     if (this.#diff('entryFiles', quasarConf)) {
       this.#entryFiles.generate(quasarConf)
+    }
+
+    if (this.#diff('types', quasarConf)) {
+      generateTypes(quasarConf)
     }
 
     if (__isRetry !== true) {
@@ -129,6 +139,15 @@ module.exports.AppDevserver = class AppDevserver extends AppTool {
     }
 
     return false
+  }
+
+  async clearWatcherList (watcherList, clearFn) {
+    const list = watcherList.slice()
+    clearFn()
+
+    for (const watcher of list) {
+      await watcher.close()
+    }
   }
 
   printBanner (quasarConf) {

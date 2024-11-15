@@ -12,6 +12,7 @@ import { QuasarCordovaTargets } from "./cordova-conf";
 
 type QuasarModes = "spa" | "ssr" | "pwa" | "cordova" | "capacitor" | "electron" | "bex";
 
+type QuasarBexTargets = "chrome" | "firefox";
 interface BaseQuasarContext {
   /** True if we are in development mode */
   dev: boolean;
@@ -144,6 +145,12 @@ interface SsrQuasarContext extends BaseQuasarContext {
 interface BexQuasarContext extends BaseQuasarContext {
   mode: { bex: true };
   modeName: "bex";
+  /**
+   * App target.
+   */
+  target: Partial<Record<QuasarBexTargets, true>>;
+  /** App target name. */
+  targetName: QuasarBexTargets;
 }
 
 export type QuasarContext =

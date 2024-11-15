@@ -14,6 +14,7 @@ import { getPackageMajorVersion } from './utils/get-package-major-version.js'
 import { resolveExtension } from './utils/resolve-extension.js'
 import { ensureElectronArgv } from './utils/ensure-argv.js'
 import { quasarEsbuildInjectReplacementsDefine, quasarEsbuildInjectReplacementsPlugin } from './plugins/esbuild.inject-replacements.js'
+import { quasarEsbuildVueShimPlugin } from './plugins/esbuild.vue-shim.js'
 
 const urlRegex = /^http(s)?:\/\//i
 import { findClosestOpenPort, localHostList } from './utils/net.js'
@@ -26,7 +27,8 @@ const defaultPortMapping = {
   pwa: 9200,
   electron: 9300,
   cordova: 9400,
-  capacitor: 9500
+  capacitor: 9500,
+  bex: 9600
 }
 
 const quasarComponentRE = /^(Q[A-Z]|q-)/
@@ -107,6 +109,17 @@ function uniquePathFilter (value, index, self) {
   return self.map(obj => obj.path).indexOf(value.path) === index
 }
 
+const extRE = /\.[m|c]?[j|t]s$/
+function formatQuasarAssetPath (asset, type) {
+  return asset.indexOf('/') !== -1
+    ? (
+        extRE.test(asset) === true
+          ? asset
+          : `${ asset }.js`
+      )
+    : `quasar/${ type }/${ asset }.js`
+}
+
 let cachedExternalHost, addressRunning = false
 
 async function onAddress ({ host, port }, mode) {
@@ -162,6 +175,7 @@ async function onAddress ({ host, port }, mode) {
 }
 
 export class QuasarConfigFile {
+  /** @type {import('../types/configuration/context').QuasarContext} */
   #ctx
   #opts
   #versions = {}
@@ -191,6 +205,8 @@ export class QuasarConfigFile {
       : () => {}
 
     const quasarConfigFileExtension = appPaths.quasarConfigOutputFormat === 'esm' ? 'mjs' : appPaths.quasarConfigOutputFormat
+
+    // if filename syntax gets changed, then also update the "clean" cmd
     this.#tempFile = `${ appPaths.quasarConfigFilename }.temporary.compiled.${ Date.now() }.${ quasarConfigFileExtension }`
 
     log(`Using ${ basename(appPaths.quasarConfigFilename) } in "${ appPaths.quasarConfigInputFormat }" format`)
@@ -240,6 +256,9 @@ export class QuasarConfigFile {
     this.#isWatching = true
   }
 
+  /**
+   * @returns {import('esbuild').BuildOptions}
+   */
   #createEsbuildConfig () {
     const { appPaths } = this.#ctx
 
@@ -248,17 +267,28 @@ export class QuasarConfigFile {
       format: appPaths.quasarConfigOutputFormat,
       bundle: true,
       packages: 'external',
-      alias: {
-        'quasar/wrappers': appPaths.quasarConfigOutputFormat === 'esm' ? 'quasar/wrappers/index.mjs' : 'quasar/wrappers/index.js'
-      },
       banner: {
         js: quasarConfigBanner
       },
       define: quasarEsbuildInjectReplacementsDefine,
+      // Define the aliases which have to be usable in the quasar.config file
+      alias: {
+        '#q-app': '@quasar/app-vite'
+      },
       resolveExtensions: [ appPaths.quasarConfigOutputFormat === 'esm' ? '.mjs' : '.cjs', '.js', '.mts', '.ts', '.json' ],
       entryPoints: [ appPaths.quasarConfigFilename ],
       outfile: this.#tempFile,
-      plugins: [ quasarEsbuildInjectReplacementsPlugin ]
+      plugins: [
+        quasarEsbuildInjectReplacementsPlugin,
+        quasarEsbuildVueShimPlugin
+      ],
+      logOverride: {
+        // .quasar/tsconfig.json won't be available for the first time executing dev/build/prepare.
+        // So, esbuild will show a warning saying it can't find the `extends` file.
+        // We need to suppress the warning. Otherwise, it will be noisy and cause a temp file to be created.
+        // tsconfig is not really important for the config file itself anyway.
+        'tsconfig.json': 'silent'
+      }
     }
   }
 
@@ -286,7 +316,8 @@ export class QuasarConfigFile {
       console.error(e)
       fatal(
         'The quasar.config file has runtime errors. Please check the Node.js stack above against the'
-        + ` temporarily created ${ basename(this.#tempFile) } file, fix the original file then DELETE the temporary one.`,
+        + ` temporarily created ${ basename(this.#tempFile) } file, fix the original file`
+        + ' then DELETE the temporary one ("quasar clean --qconf" can be used).',
         'FAIL'
       )
     }
@@ -298,7 +329,6 @@ export class QuasarConfigFile {
     let firstBuildIsDone
 
     const { appPaths } = this.#ctx
-    const { updateAppPackageJson } = this.#ctx.pkg
     const tempFile = this.#tempFile
 
     esbuildConfig.plugins.push({
@@ -310,7 +340,6 @@ export class QuasarConfigFile {
           if (isFirst === false) {
             log()
             log('The quasar.config file (or its dependencies) changed. Reading it again...')
-            updateAppPackageJson()
           }
         })
 
@@ -357,7 +386,8 @@ export class QuasarConfigFile {
             console.error(e)
 
             const msg = 'Importing quasar.config file results in error. Please check the'
-              + ` Node.js stack above against the temporarily created ${ basename(tempFile) } file and fix the original file.`
+              + ` Node.js stack above against the temporarily created ${ basename(tempFile) } file`
+              + ' and fix the original file then DELETE the temporary one ("quasar clean --qconf" can be used).'
 
             if (isFirst === true) {
               fatal(msg, 'FAIL')
@@ -426,7 +456,7 @@ export class QuasarConfigFile {
       const msg = 'The quasar.config file has runtime errors.'
         + ' Please check the Node.js stack above against the'
         + ` temporarily created ${ basename(this.#tempFile) } file`
-        + ' then DELETE it.'
+        + ' then DELETE it ("quasar clean --qconf" can be used).'
 
       if (failOnError === true) {
         fatal(msg, 'FAIL')
@@ -468,12 +498,6 @@ export class QuasarConfigFile {
         config: {}
       },
 
-      eslint: {
-        include: [],
-        exclude: [],
-        rawOptions: {}
-      },
-
       sourceFiles: {},
       bin: {},
       htmlVariables: {},
@@ -498,6 +522,7 @@ export class QuasarConfigFile {
       },
       pwa: {},
       electron: {
+        preloadScripts: [],
         unPackagedInstallParams: [],
         packager: {},
         builder: {}
@@ -507,7 +532,7 @@ export class QuasarConfigFile {
         capacitorCliPreparationParams: []
       },
       bex: {
-        contentScripts: []
+        extraScripts: []
       }
     }, userCfg)
 
@@ -557,8 +582,7 @@ export class QuasarConfigFile {
       }, cfg.ssr)
     }
 
-    // if DEV and not BEX mode (BEX does not use a regular devserver)
-    if (this.#ctx.dev && this.#ctx.mode.bex !== true) {
+    if (this.#ctx.dev) {
       if (this.#opts.host) {
         cfg.devServer.host = this.#opts.host
       }
@@ -576,7 +600,7 @@ export class QuasarConfigFile {
       }
       else {
         tip(
-          'You specified an explicit quasar.config file > devServer > port. It is recommended to use'
+          'You (or an AE) specified an explicit quasar.config file > devServer > port. It is recommended to use'
           + ' a different devServer > port for each Quasar mode to avoid browser cache issues.'
           + ' Example: ctx.mode.ssr ? 9100 : ...'
         )
@@ -669,21 +693,21 @@ export class QuasarConfigFile {
     cfg.framework.directives = getUniqueArray(cfg.framework.directives)
     cfg.framework.plugins = getUniqueArray(cfg.framework.plugins)
 
+    const { lang, iconSet } = cfg.framework
+
+    if (lang !== void 0) {
+      cfg.framework.lang = formatQuasarAssetPath(lang, 'lang')
+    }
+
+    if (iconSet !== void 0) {
+      cfg.framework.iconSet = formatQuasarAssetPath(iconSet, 'icon-set')
+    }
+
     Object.assign(cfg.metaConf, {
+      packageTypeBasedExtension: this.#ctx.pkg.appPkg.type === 'module' ? 'js' : 'mjs',
       hasLoadingBarPlugin: cfg.framework.plugins.includes('LoadingBar'),
       hasMetaPlugin: cfg.framework.plugins.includes('Meta')
     })
-
-    cfg.eslint = merge({
-      warnings: false,
-      errors: false,
-      fix: false,
-      formatter: 'stylish',
-      cache: true,
-      include: [],
-      exclude: [],
-      rawOptions: {}
-    }, cfg.eslint)
 
     cfg.build = merge({
       viteVuePluginOptions: {
@@ -712,13 +736,14 @@ export class QuasarConfigFile {
         collapseBooleanAttributes: true,
         removeScriptTypeAttributes: true
         // more options:
-        // https://github.com/kangax/html-minifier#options-quick-reference
+        // https://github.com/terser/html-minifier-terser?tab=readme-ov-file#options-quick-reference
       },
 
       rawDefine: {
         // vue
         __VUE_OPTIONS_API__: cfg.build.vueOptionsAPI !== false,
         __VUE_PROD_DEVTOOLS__: cfg.metaConf.debugging,
+        __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: cfg.metaConf.debugging, // Vue 3.4+
 
         // vue-i18n
         __VUE_I18N_FULL_INSTALL__: true,
@@ -728,6 +753,7 @@ export class QuasarConfigFile {
       },
 
       alias: {
+        '#q-app': '@quasar/app-vite',
         src: appPaths.srcDir,
         app: appPaths.appDir,
         components: appPaths.resolve.src('components'),
@@ -736,15 +762,20 @@ export class QuasarConfigFile {
         assets: appPaths.resolve.src('assets'),
         boot: appPaths.resolve.src('boot'),
         stores: appPaths.resolve.src('stores')
+      },
+
+      typescript: {
+        strict: false,
+        vueShim: false
       }
     }, cfg.build)
 
     if (!cfg.build.target.browser) {
-      cfg.build.target.browser = [ 'es2019', 'edge88', 'firefox78', 'chrome87', 'safari13.1' ]
+      cfg.build.target.browser = [ 'es2022', 'firefox115', 'chrome115', 'safari14' ]
     }
 
     if (!cfg.build.target.node) {
-      cfg.build.target.node = 'node16'
+      cfg.build.target.node = 'node18'
     }
 
     if (this.#ctx.mode.ssr) {
@@ -754,7 +785,7 @@ export class QuasarConfigFile {
       cfg.build.vueRouterMode = 'hash'
     }
 
-    if (this.#ctx.dev === true && this.#ctx.mode.bex) {
+    if (this.#ctx.mode.bex) {
       // we want to differentiate the folder
       // otherwise we can't run dev and build simultaneously;
       // it's better regardless because it's easier to select the dev folder
@@ -764,7 +795,7 @@ export class QuasarConfigFile {
 
       cfg.build.distDir = join(
         dirname(cfg.build.distDir),
-        name === 'bex' ? 'bex--dev' : `bex-dev--${ name }`
+        `bex-${ this.#ctx.targetName }${ name !== 'bex' ? `-${ name }` : '' }${ this.#ctx.dev ? '--dev' : '' }`
       )
     }
 
@@ -792,7 +823,6 @@ export class QuasarConfigFile {
       pwaServiceWorker: 'src-pwa/custom-service-worker',
       pwaManifestFile: 'src-pwa/manifest.json',
       electronMain: 'src-electron/electron-main',
-      electronPreload: 'src-electron/electron-preload',
       bexManifestFile: 'src-bex/manifest.json'
     }, cfg.sourceFiles)
 
@@ -838,40 +868,6 @@ export class QuasarConfigFile {
       }
 
       this.#ctx.mode.pwa = cfg.ctx.mode.pwa = cfg.ssr.pwa === true
-
-      if (this.#ctx.dev) {
-        if (cfg.devServer.https === true) {
-          const { getCertificate } = await import('@quasar/ssl-certificate')
-          const sslCertificate = getCertificate({ log, fatal })
-          cfg.devServer.https = {
-            key: sslCertificate,
-            cert: sslCertificate
-          }
-        }
-        else if (Object(cfg.devServer.https) === cfg.devServer.https) {
-          const { https } = cfg.devServer
-
-          // we now check if config is specifying a file path
-          // and we actually read the contents so we can later supply correct
-          // params to the node HTTPS server
-          ;[ 'ca', 'pfx', 'key', 'cert' ].forEach(prop => {
-            if (typeof https[ prop ] === 'string') {
-              try {
-                https[ prop ] = readFileSync(https[ prop ])
-              }
-              catch (e) {
-                console.error(e)
-                console.log()
-                delete https[ prop ]
-                warn(`The devServer.https.${ prop } file could not be read. Removed the config.`)
-              }
-            }
-          })
-        }
-      }
-      else {
-        cfg.metaConf.ssrServerEntryPointExtension = this.#ctx.pkg.appPkg.type === 'module' ? 'js' : 'mjs'
-      }
     }
 
     if (this.#ctx.dev) {
@@ -890,18 +886,47 @@ export class QuasarConfigFile {
         cfg.metaConf.vueDevtools = { ...this.#vueDevtools }
       }
 
-      if (this.#ctx.mode.cordova || this.#ctx.mode.capacitor || this.#ctx.mode.electron) {
-        if (this.#ctx.mode.electron) {
-          cfg.devServer.https = false
-        }
+      if (this.#ctx.mode.electron || this.#ctx.mode.bex) {
+        cfg.devServer.https = false
       }
-      else if (cfg.devServer.open) {
+      else if (cfg.devServer.open && !this.#ctx.mode.cordova && !this.#ctx.mode.capacitor) {
         cfg.metaConf.openBrowser = !isMinimalTerminal
           ? cfg.devServer.open
           : false
       }
 
       delete cfg.devServer.open
+    }
+
+    if (this.#ctx.dev) {
+      if (cfg.devServer.https === true) {
+        const { getCertificate } = await import('@quasar/ssl-certificate')
+        const sslCertificate = getCertificate({ log, fatal })
+        cfg.devServer.https = {
+          key: sslCertificate,
+          cert: sslCertificate
+        }
+      }
+      else if (Object(cfg.devServer.https) === cfg.devServer.https) {
+        const { https } = cfg.devServer
+
+        // we now check if config is specifying a file path
+        // and we actually read the contents so we can later supply correct
+        // params to the node HTTPS server
+        ;[ 'ca', 'pfx', 'key', 'cert' ].forEach(prop => {
+          if (typeof https[ prop ] === 'string') {
+            try {
+              https[ prop ] = readFileSync(https[ prop ])
+            }
+            catch (e) {
+              console.error(e)
+              console.log()
+              delete https[ prop ]
+              warn(`The devServer.https.${ prop } file could not be read. Removed the config.`)
+            }
+          }
+        })
+      }
     }
 
     if (this.#ctx.mode.pwa) {
@@ -942,13 +967,12 @@ export class QuasarConfigFile {
         ? 'localhost'
         : cfg.devServer.host
 
-      cfg.metaConf.APP_URL = getUrl(hostname)
+      cfg.metaConf.APP_URL = this.#ctx.mode.bex ? 'index.html' : getUrl(hostname)
       cfg.metaConf.getUrl = getUrl
     }
     else if (this.#ctx.mode.cordova || this.#ctx.mode.capacitor || this.#ctx.mode.bex) {
       cfg.metaConf.APP_URL = 'index.html'
     }
-    // Electron is handled in lib/modes/electron/electron-builder.js -> #replaceAppUrl()
 
     Object.assign(cfg.build.env, {
       NODE_ENV: this.#ctx.prod ? 'production' : 'development',
@@ -961,6 +985,10 @@ export class QuasarConfigFile {
       VUE_ROUTER_MODE: cfg.build.vueRouterMode,
       VUE_ROUTER_BASE: cfg.build.vueRouterBase
     })
+
+    if (this.#ctx.mode.bex || this.#ctx.mode.capacitor || this.#ctx.mode.cordova) {
+      cfg.build.env.TARGET = this.#ctx.targetName
+    }
 
     if (cfg.metaConf.APP_URL) {
       cfg.build.env.APP_URL = cfg.metaConf.APP_URL
@@ -978,99 +1006,110 @@ export class QuasarConfigFile {
       log(`Using .env files: ${ usedEnvFiles.join(', ') }`)
     }
 
-    if (this.#ctx.mode.electron && this.#electronInspectPort === void 0) {
-      this.#electronInspectPort = await findClosestOpenPort(5858, '0.0.0.0')
-    }
-
-    if (this.#ctx.mode.electron && this.#ctx.prod) {
-      const { ensureInstall, getDefaultName } = await this.#ctx.cacheProxy.getModule('electron')
-
-      const icon = appPaths.resolve.electron('icons/icon.png')
-      const builderIcon = process.platform === 'linux'
-        // backward compatible (linux-512x512.png)
-        ? (existsSync(icon) === true ? icon : appPaths.resolve.electron('icons/linux-512x512.png'))
-        : appPaths.resolve.electron('icons/icon')
-
-      cfg.electron = merge({
-        inspectPort: this.#electronInspectPort,
-        packager: {
-          asar: true,
-          icon: appPaths.resolve.electron('icons/icon'),
-          overwrite: true
-        },
-        builder: {
-          appId: 'quasar-app',
-          icon: builderIcon,
-          productName: this.#ctx.pkg.appPkg.productName || this.#ctx.pkg.appPkg.name || 'Quasar App',
-          directories: {
-            buildResources: appPaths.resolve.electron('')
-          }
-        }
-      }, cfg.electron, {
-        packager: {
-          dir: join(cfg.build.distDir, 'UnPackaged'),
-          out: join(cfg.build.distDir, 'Packaged')
-        },
-        builder: {
-          directories: {
-            app: join(cfg.build.distDir, 'UnPackaged'),
-            output: join(cfg.build.distDir, 'Packaged')
-          }
-        }
-      })
-
-      if (cfg.ctx.bundlerName) {
-        cfg.electron.bundler = cfg.ctx.bundlerName
-      }
-      else if (!cfg.electron.bundler) {
-        cfg.electron.bundler = getDefaultName()
+    if (this.#ctx.mode.electron) {
+      if (!userCfg.electron?.preloadScripts) {
+        cfg.electron.preloadScripts = [ 'electron-preload' ]
       }
 
-      ensureElectronArgv(cfg.electron.bundler, this.#ctx)
+      if (this.#ctx.dev) {
+        if (this.#electronInspectPort === void 0) {
+          this.#electronInspectPort = await findClosestOpenPort(userCfg.electron?.inspectPort || 5858, '127.0.0.1')
+        }
 
-      if (cfg.electron.bundler === 'packager') {
-        if (cfg.ctx.targetName) {
-          cfg.electron.packager.platform = cfg.ctx.targetName
-        }
-        if (cfg.ctx.archName) {
-          cfg.electron.packager.arch = cfg.ctx.archName
-        }
+        cfg.electron.inspectPort = this.#electronInspectPort
       }
       else {
-        cfg.electron.builder = {
-          config: cfg.electron.builder
+        const { ensureInstall, getDefaultName } = await this.#ctx.cacheProxy.getModule('electron')
+
+        const icon = appPaths.resolve.electron('icons/icon.png')
+        const builderIcon = process.platform === 'linux'
+          // backward compatible (linux-512x512.png)
+          ? (existsSync(icon) === true ? icon : appPaths.resolve.electron('icons/linux-512x512.png'))
+          : appPaths.resolve.electron('icons/icon')
+
+        cfg.electron = merge({
+          packager: {
+            asar: true,
+            icon: appPaths.resolve.electron('icons/icon'),
+            overwrite: true
+          },
+          builder: {
+            appId: 'quasar-app',
+            icon: builderIcon,
+            productName: this.#ctx.pkg.appPkg.productName || this.#ctx.pkg.appPkg.name || 'Quasar App',
+            directories: {
+              buildResources: appPaths.resolve.electron('')
+            }
+          }
+        }, cfg.electron, {
+          packager: {
+            dir: join(cfg.build.distDir, 'UnPackaged'),
+            out: join(cfg.build.distDir, 'Packaged')
+          },
+          builder: {
+            directories: {
+              app: join(cfg.build.distDir, 'UnPackaged'),
+              output: join(cfg.build.distDir, 'Packaged')
+            }
+          }
+        })
+
+        if (cfg.ctx.bundlerName) {
+          cfg.electron.bundler = cfg.ctx.bundlerName
+        }
+        else if (!cfg.electron.bundler) {
+          cfg.electron.bundler = getDefaultName()
         }
 
-        if (cfg.ctx.targetName === 'mac' || cfg.ctx.targetName === 'darwin' || cfg.ctx.targetName === 'all') {
-          cfg.electron.builder.mac = []
+        ensureElectronArgv(cfg.electron.bundler, this.#ctx)
+
+        if (cfg.electron.bundler === 'packager') {
+          if (cfg.ctx.targetName) {
+            cfg.electron.packager.platform = cfg.ctx.targetName
+          }
+          if (cfg.ctx.archName) {
+            cfg.electron.packager.arch = cfg.ctx.archName
+          }
+        }
+        else {
+          cfg.electron.builder = {
+            config: cfg.electron.builder
+          }
+
+          if (cfg.ctx.targetName === 'mac' || cfg.ctx.targetName === 'darwin' || cfg.ctx.targetName === 'all') {
+            cfg.electron.builder.mac = []
+          }
+
+          if (cfg.ctx.targetName === 'linux' || cfg.ctx.targetName === 'all') {
+            cfg.electron.builder.linux = []
+          }
+
+          if (cfg.ctx.targetName === 'win' || cfg.ctx.targetName === 'win32' || cfg.ctx.targetName === 'all') {
+            cfg.electron.builder.win = []
+          }
+
+          if (cfg.ctx.archName) {
+            cfg.electron.builder[ cfg.ctx.archName ] = true
+          }
+
+          if (cfg.ctx.publish) {
+            cfg.electron.builder.publish = cfg.ctx.publish
+          }
         }
 
-        if (cfg.ctx.targetName === 'linux' || cfg.ctx.targetName === 'all') {
-          cfg.electron.builder.linux = []
-        }
-
-        if (cfg.ctx.targetName === 'win' || cfg.ctx.targetName === 'win32' || cfg.ctx.targetName === 'all') {
-          cfg.electron.builder.win = []
-        }
-
-        if (cfg.ctx.archName) {
-          cfg.electron.builder[ cfg.ctx.archName ] = true
-        }
-
-        if (cfg.ctx.publish) {
-          cfg.electron.builder.publish = cfg.ctx.publish
-        }
+        ensureInstall(cfg.electron.bundler)
       }
-
-      ensureInstall(cfg.electron.bundler)
     }
 
-    const entryScriptWebPath = cfg.build.publicPath + relative(appPaths.appDir, appPaths.resolve.entry('client-entry.js')).replaceAll('\\', '/')
-    Object.assign(cfg.metaConf, {
-      entryScriptWebPath,
-      entryScriptTag: `<script type="module" src="${ entryScriptWebPath }"></script>`
-    })
+    const entryScriptAbsolutePath = appPaths.resolve.entry('client-entry.js')
+    const entryScriptWebPath = relative(appPaths.appDir, entryScriptAbsolutePath)
 
+    cfg.metaConf.entryScript = {
+      absolutePath: entryScriptAbsolutePath,
+      webPath: cfg.build.publicPath + entryScriptWebPath,
+      // publicPath will be handled by Vite middleware:
+      tag: `<script type="module" src="/${ entryScriptWebPath }"></script>`
+    }
     cfg.htmlVariables = merge({
       ctx: cfg.ctx,
       process: { env: cfg.build.env },

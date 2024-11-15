@@ -6,7 +6,7 @@ const { openBrowser } = require('../../utils/open-browser.js')
 const { quasarPwaConfig } = require('./pwa-config.js')
 
 module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevserver {
-  #server
+  #server = null
   #pwaServiceWorkerWatcher
 
   constructor (opts) {
@@ -64,7 +64,7 @@ module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevser
   }
 
   async #runWebpack (quasarConf, urlDiffers) {
-    if (this.#server) {
+    if (this.#server !== null) {
       await this.#server.stop()
       this.#server = null
     }

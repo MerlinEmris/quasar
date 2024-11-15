@@ -2,21 +2,21 @@ const fs = require('node:fs')
 const fse = require('fs-extra')
 
 const { log, warn } = require('../../utils/logger.js')
+const { isModeInstalled } = require('../modes-utils.js')
 
-const pwaDeps = {
+const pwaDevDeps = {
   'workbox-webpack-plugin': '^7.0.0'
 }
 
-function isModeInstalled (appPaths) {
-  return fs.existsSync(appPaths.pwaDir)
+const pwaDeps = {
+  'register-service-worker': '^1.7.2'
 }
-module.exports.isModeInstalled = isModeInstalled
 
 module.exports.addMode = function addMode ({
   ctx: { appPaths, cacheProxy },
   silent
 }) {
-  if (isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'pwa')) {
     if (silent !== true) {
       warn('PWA support detected already. Aborting.')
     }
@@ -25,8 +25,12 @@ module.exports.addMode = function addMode ({
 
   const nodePackager = cacheProxy.getModule('nodePackager')
   nodePackager.installPackage(
+    Object.entries(pwaDevDeps).map(([ name, version ]) => `${ name }@${ version }`),
+    { isDevDependency: true, displayName: 'PWA dev dependencies' }
+  )
+  nodePackager.installPackage(
     Object.entries(pwaDeps).map(([ name, version ]) => `${ name }@${ version }`),
-    { isDevDependency: true, displayName: 'PWA dependencies' }
+    { displayName: 'PWA dependencies' }
   )
 
   log('Creating PWA source folder...')
@@ -42,11 +46,6 @@ module.exports.addMode = function addMode ({
     hasEslint === true ? { filter: src => !src.endsWith('/.eslintrc.cjs') } : void 0
   )
 
-  fse.copySync(
-    appPaths.resolve.cli('templates/pwa/pwa-flag.d.ts'),
-    appPaths.resolve.pwa('pwa-flag.d.ts')
-  )
-
   log('Copying PWA icons to /public/icons/ (if they are not already there)...')
   fse.copySync(
     appPaths.resolve.cli('templates/pwa-icons'),
@@ -60,7 +59,7 @@ module.exports.addMode = function addMode ({
 module.exports.removeMode = function removeMode ({
   ctx: { appPaths, cacheProxy }
 }) {
-  if (!isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'pwa') === false) {
     warn('No PWA support detected. Aborting.')
     return
   }
@@ -69,6 +68,9 @@ module.exports.removeMode = function removeMode ({
   fse.removeSync(appPaths.pwaDir)
 
   const nodePackager = cacheProxy.getModule('nodePackager')
+  nodePackager.uninstallPackage(Object.keys(pwaDevDeps), {
+    displayName: 'PWA dev dependencies'
+  })
   nodePackager.uninstallPackage(Object.keys(pwaDeps), {
     displayName: 'PWA dependencies'
   })

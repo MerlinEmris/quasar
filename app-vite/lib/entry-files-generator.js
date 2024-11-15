@@ -1,4 +1,3 @@
-
 import { readFileSync } from 'node:fs'
 import fse from 'fs-extra'
 import compileTemplate from 'lodash/template.js'
@@ -25,10 +24,7 @@ export class EntryFilesGenerator {
     }
     else if (ctx.mode.bex) {
       regularFiles.push(
-        'bex-bridge.js',
-        'bex-entry-background.js',
-        'bex-entry-dom.js',
-        'bex-window-event-listener.js'
+        'bex-app.js'
       )
     }
 

@@ -1,4 +1,3 @@
-
 import { join } from 'node:path'
 import { mergeConfig as mergeViteConfig } from 'vite'
 
@@ -7,6 +6,7 @@ import {
   createNodeEsbuildConfig, extendEsbuildConfig
 } from '../../config-tools.js'
 
+import { cliPkg } from '../../utils/cli-runtime.js'
 import { getBuildSystemDefine } from '../../utils/env.js'
 
 import { quasarPwaConfig } from '../pwa/pwa-config.js'
@@ -56,6 +56,7 @@ export const quasarSsrConfig = {
   viteServer: async quasarConf => {
     let cfg = await createViteConfig(quasarConf, { compileId: 'vite-ssr-server' })
     const { appPaths } = quasarConf.ctx
+    const ssrEntryFile = appPaths.resolve.entry('server-entry.mjs')
 
     cfg = mergeViteConfig(cfg, {
       target: quasarConf.build.target.node,
@@ -70,14 +71,23 @@ export const quasarSsrConfig = {
       }),
       appType: 'custom',
       server: {
+        ws: false, // let client config deal with it
         hmr: false, // let client config deal with it
-        middlewareMode: true
+        middlewareMode: true,
+        warmup: {
+          ssrFiles: [ ssrEntryFile ]
+        }
+      },
+      ssr: {
+        // we don't externalize ourselves because of
+        // the possible imports of '#q-app/wrappers' / '@quasar/app-vite/wrappers'
+        noExternal: [ cliPkg.name ]
       },
       build: {
         ssr: true,
         outDir: join(quasarConf.build.distDir, 'server'),
         rollupOptions: {
-          input: appPaths.resolve.entry('server-entry.mjs')
+          input: ssrEntryFile
         }
       }
     })
@@ -85,8 +95,9 @@ export const quasarSsrConfig = {
     return extendViteConfig(cfg, quasarConf, { isServer: true })
   },
 
-  webserver: async quasarConf => {
-    const cfg = await createNodeEsbuildConfig(quasarConf, { compileId: 'node-ssr-webserver', format: 'esm' })
+  // returns a Promise
+  webserver: quasarConf => {
+    const cfg = createNodeEsbuildConfig(quasarConf, { compileId: 'node-ssr-webserver', format: 'esm' })
     const { appPaths } = quasarConf.ctx
 
     Object.assign(cfg.define, getBuildSystemDefine({
@@ -102,7 +113,8 @@ export const quasarSsrConfig = {
     }
     else {
       cfg.external = [
-        ...(cfg.external || []),
+        ...cfg.external,
+
         'vue/server-renderer',
         'vue/compiler-sfc',
         './render-template.js',

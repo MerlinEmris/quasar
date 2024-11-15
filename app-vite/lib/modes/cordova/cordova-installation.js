@@ -1,22 +1,17 @@
-
-import fs from 'node:fs'
 import fse from 'fs-extra'
 import inquirer from 'inquirer'
 
 import { log, warn, fatal } from '../../utils/logger.js'
 import { spawnSync } from '../../utils/spawn.js'
 import { ensureWWW, ensureConsistency } from './ensure-consistency.js'
-
-export function isModeInstalled (appPaths) {
-  return fs.existsSync(appPaths.cordovaDir)
-}
+import { isModeInstalled } from '../modes-utils.js'
 
 export async function addMode ({
   ctx: { appPaths, pkg: { appPkg } },
   silent,
   target
 }) {
-  if (isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'cordova')) {
     if (target) {
       addPlatform(appPaths, target)
     }
@@ -84,7 +79,7 @@ export async function addMode ({
 export function removeMode ({
   ctx: { appPaths }
 }) {
-  if (!isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'cordova') === false) {
     warn('No Cordova support detected. Aborting.')
     return
   }
@@ -97,7 +92,7 @@ function addPlatform (appPaths, target) {
   ensureConsistency({ appPaths })
 
   // if it has the platform
-  if (fs.existsSync(appPaths.resolve.cordova(`platforms/${ target }`))) {
+  if (fse.existsSync(appPaths.resolve.cordova(`platforms/${ target }`))) {
     return
   }
 

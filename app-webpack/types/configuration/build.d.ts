@@ -4,6 +4,7 @@ import { BundleAnalyzerPlugin } from "webpack-bundle-analyzer";
 import * as WebpackChain from "webpack-5-chain";
 import { DefinedDefaultAlgorithmAndOptions } from "compression-webpack-plugin";
 import { QuasarHookParams } from "./conf";
+import { CompilerOptions, TypeAcquisition } from "typescript";
 
 interface HtmlMinifierOptions {
   caseSensitive?: boolean;
@@ -46,6 +47,30 @@ interface HtmlMinifierOptions {
   useShortDoctype?: boolean;
 }
 
+// TSConfig type is adapted from https://github.com/unjs/pkg-types/blob/0bec64641468c9560dea95da2cff502ea8118286/src/types/tsconfig.ts
+type StripEnums<T extends Record<string, any>> = {
+  [K in keyof T]: T[K] extends boolean
+    ? T[K]
+    : T[K] extends string
+      ? T[K]
+      : T[K] extends object
+        ? T[K]
+        : T[K] extends Array<any>
+          ? T[K]
+          : T[K] extends undefined
+            ? undefined
+            : any;
+};
+interface TSConfig {
+  compilerOptions?: StripEnums<CompilerOptions>;
+  exclude?: string[];
+  compileOnSave?: boolean;
+  extends?: string | string[];
+  files?: string[];
+  include?: string[];
+  typeAcquisition?: TypeAcquisition;
+}
+
 interface InvokeParams {
   isClient: boolean;
   isServer: boolean;
@@ -53,11 +78,11 @@ interface InvokeParams {
 
 interface EsbuildTargetOptions {
   /**
-   * @default ['es2019', 'edge88', 'firefox78', 'chrome87', 'safari13.1']
+   * @default ['es2022', 'firefox115', 'chrome115', 'safari14']
    */
   browser?: string[];
   /**
-   * @example 'node16'
+   * @example 'node20'
    */
   node?: string;
 }
@@ -76,10 +101,11 @@ interface QuasarStaticBuildConfiguration {
    */
   webpackTranspileDependencies?: (RegExp | string)[];
   /**
+   * Esbuild is used to build contents of /src-pwa, /src-ssr, /src-electron, /src-bex
    * @example
    *    {
-   *      browser: ['es2019', 'edge88', 'firefox78', 'chrome87', 'safari13.1'],
-   *      node: 'node16'
+   *      browser: ['es2022', 'firefox115', 'chrome115', 'safari14'],
+   *      node: 'node20'
    *    }
    */
   esbuildTarget?: EsbuildTargetOptions;
@@ -199,6 +225,45 @@ interface QuasarStaticBuildConfiguration {
    * }
    */
   alias?: { [key: string]: string };
+  /**
+   * Configuration for TypeScript integration.
+   */
+  typescript?: {
+    /**
+     * Once your codebase is fully using TypeScript and all team members are comfortable with it,
+     * you can set this to `true` to enforce stricter type checking.
+     * It is recommended to set this to `true` and use stricter typescript-eslint rules.
+     *
+     * It will set the following TypeScript options:
+     * - "strict": true
+     * - "allowUnreachableCode": false
+     * - "allowUnusedLabels": false
+     * - "noImplicitOverride": true
+     * - "exactOptionalPropertyTypes": true
+     * - "noUncheckedIndexedAccess": true
+     *
+     * @see https://www.typescriptlang.org/docs/handbook/migrating-from-javascript.html#getting-stricter-checks
+     */
+    strict?: boolean;
+
+    /**
+     * Extend the generated `.quasar/tsconfig.json` file.
+     *
+     * If you don't have dynamic logic, you can directly modify your `tsconfig.json` file instead.
+     */
+    extendTsConfig?: (tsConfig: TSConfig) => void;
+
+    /**
+     * Generate a shim file for `*.vue` files to process them as plain Vue component instances.
+     *
+     * Vue Language Tools VS Code extension can analyze `*.vue` files in a better way, without the shim file.
+     * So, you can disable the shim file generation and let the extension handle the types.
+     *
+     * However, some tools like ESLint can't work with `*.vue` files without the shim file.
+     * So, if your tooling is not properly working, enable this option.
+     */
+    vueShim?: boolean;
+  };
 
   /**
    * Add properties to `process.env` that you can use in your website/app JS code.
@@ -270,8 +335,6 @@ interface QuasarStaticBuildConfiguration {
   vueLoaderOptions?: object;
   /** Options to supply to `ts-loader` */
   tsLoaderOptions?: object;
-  /** Options to supply to `ts-checker` */
-  tsCheckerOptions?: object;
   /**
    * RTL options. [Full list](https://github.com/vkalinichev/postcss-rtl).
    * When providing an object, it is the configuration for postcss-rtl plugin, and if fromRTL is present it will only be used for client styles
@@ -299,7 +362,7 @@ interface QuasarDynamicBuildConfiguration {
    */
   minify?: boolean | 'terser' | 'esbuild';
   /**
-   * Minification options for html-minifier. [Full list](https://github.com/kangax/html-minifier)
+   * Minification options for html-minifier-terser: https://github.com/terser/html-minifier-terser?tab=readme-ov-file#options-quick-reference
    * @default
    *  {
    *    removeComments: true,

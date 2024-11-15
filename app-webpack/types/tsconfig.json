@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
+    "module": "Preserve",
     "strict": true,
-    "lib": ["es2015", "dom"]
+    "lib": ["es2022", "dom"]
   },
-  "include": ["./*.ts"]
+  "include": ["./**/*.ts"]
 }

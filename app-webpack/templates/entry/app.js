@@ -11,6 +11,10 @@
  * Boot files are your "main.js"
  **/
 
+<% if (ctx.mode.bex) { %>
+import { bex } from './bex-app.js'
+<% } %>
+
 <% if (ctx.mode.capacitor) { %>
   <% if (metaConf.versions.capacitor <= 2) { %>
   import { Plugins } from '@capacitor/core'
@@ -61,6 +65,11 @@ export const ssrIsRunningOnClientPWA = typeof window !== 'undefined' &&
 <% } %>
 
 export default async function (createAppFn, quasarUserOptions<%= ctx.mode.ssr ? ', ssrContext' : '' %>) {
+  <% if (ctx.mode.bex) { %>
+    await bex.promise
+    delete bex.promise
+  <% } %>
+
   // Create the app instance.
   // Here we inject into it the Quasar UI, the router & possibly the store.
   const app = createAppFn(RootComponent)
@@ -71,8 +80,10 @@ export default async function (createAppFn, quasarUserOptions<%= ctx.mode.ssr ? 
 
   app.use(Quasar, quasarUserOptions<%= ctx.mode.ssr ? ', ssrContext' : '' %>)
 
-  <% if (ctx.mode.capacitor) { %>
-  app.config.globalProperties.$q.capacitor = window.Capacitor
+  <% if (ctx.mode.bex) { %>
+    app.config.globalProperties.$q.bex = bex.bridge
+  <% } else if (ctx.mode.capacitor) { %>
+    app.config.globalProperties.$q.capacitor = window.Capacitor
   <% } %>
 
   <% if (metaConf.hasStore) { %>

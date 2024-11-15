@@ -1,39 +1,49 @@
-
+import { join } from 'node:path'
+import fse from 'fs-extra'
 import debounce from 'lodash/debounce.js'
 import chokidar from 'chokidar'
-import fse from 'fs-extra'
+import { createServer } from 'vite'
 
 import { AppDevserver } from '../../app-devserver.js'
 import { quasarBexConfig } from './bex-config.js'
-import { createManifest, copyBexAssets } from './utils.js'
+import { createManifest, copyBexAssets } from './bex-utils.js'
 
 export class QuasarModeDevserver extends AppDevserver {
-  #uiWatchers = []
-  #scriptWatchers = []
+  #viteWatcherList = []
+  #manifestWatcher = null
+  #scriptWatcherList = []
+
+  #viteServer = null
+  #scriptList = []
+
+  #reloadExtension = () => {}
 
   constructor (opts) {
     super(opts)
 
-    this.registerDiff('bexScripts', (quasarConf, diffMap) => [
-      quasarConf.bex.contentScripts,
-      quasarConf.bex.extendBexScriptsConf,
-      quasarConf.bex.extendBexManifestJson,
-      quasarConf.build.distDir,
-
-      // extends 'esbuild' diff
-      ...diffMap.esbuild(quasarConf)
-    ])
-
-    this.registerDiff('viteBex', (quasarConf, diffMap) => [
-      quasarConf.sourceFiles.bexManifestFile,
-      quasarConf.bex.extendBexManifestJson,
-
-      // extends 'vite' diff
-      ...diffMap.vite(quasarConf)
-    ])
+    this.#reloadExtension = debounce(() => {
+      this.#viteServer?.ws.send({ type: 'custom', event: 'qbex:hmr:reload' })
+    }, 200)
 
     this.registerDiff('distDir', quasarConf => [
       quasarConf.build.distDir
+    ])
+
+    this.registerDiff('bexManifest', quasarConf => [
+      quasarConf.sourceFiles.bexManifestFile,
+      quasarConf.bex.extendBexManifestJson,
+      quasarConf.build.distDir
+    ])
+
+    this.registerDiff('bexScripts', (quasarConf, diffMap) => [
+      quasarConf.build.distDir,
+      quasarConf.devServer.port,
+
+      quasarConf.bex.extraScripts,
+      quasarConf.bex.extendBexScriptsConf,
+
+      // extends 'esbuild' diff
+      ...diffMap.esbuild(quasarConf)
     ])
   }
 
@@ -41,74 +51,148 @@ export class QuasarModeDevserver extends AppDevserver {
     const { diff, queue } = super.run(quasarConf, __isRetry)
 
     if (diff('distDir', quasarConf)) {
-      this.#uiWatchers.forEach(watcher => { watcher.close() })
-      this.#uiWatchers = []
+      return queue(() => this.#onDistDir(quasarConf))
+    }
 
-      this.#scriptWatchers.forEach(watcher => { watcher.close() })
-      this.#scriptWatchers = []
-
-      this.cleanArtifacts(quasarConf.build.distDir)
+    if (diff('bexManifest', quasarConf)) {
+      return queue(() => this.#compileBexManifest(quasarConf, queue))
     }
 
     if (diff('bexScripts', quasarConf)) {
       return queue(() => this.#compileBexScripts(quasarConf))
     }
 
-    if (diff('viteBex', quasarConf)) {
-      return queue(() => this.#compileUI(quasarConf, queue))
+    if (diff('vite', quasarConf)) {
+      return queue(() => this.#runVite(quasarConf, queue))
     }
+  }
+
+  async #onDistDir (quasarConf) {
+    if (this.#manifestWatcher !== null) {
+      this.#manifestWatcher.close()
+      this.#manifestWatcher = null
+    }
+
+    await this.clearWatcherList(this.#viteWatcherList, () => { this.#viteWatcherList = [] })
+    await this.clearWatcherList(this.#scriptWatcherList, () => { this.#scriptWatcherList = [] })
+
+    this.cleanArtifacts(quasarConf.build.distDir)
+
+    // ensure we have a stub www/index.html file otherwise the browser
+    // will complain about it not being found
+    const indexHtmlDir = join(quasarConf.build.distDir, 'www')
+    fse.ensureDirSync(indexHtmlDir)
+    fse.writeFileSync(join(indexHtmlDir, 'index.html'), '', 'utf-8')
+  }
+
+  async #compileBexManifest (quasarConf, queue) {
+    if (this.#manifestWatcher !== null) {
+      this.#manifestWatcher.close()
+    }
+
+    const { err, scriptList } = createManifest(quasarConf)
+    if (err !== void 0) process.exit(1)
+
+    const setScripts = jsList => {
+      this.#scriptList = jsList
+      return JSON.stringify(jsList)
+    }
+
+    let scriptSnapshot = setScripts(scriptList)
+    const updateClient = () => {
+      this.printBanner(quasarConf)
+      this.#reloadExtension()
+    }
+
+    this.#manifestWatcher = chokidar.watch(quasarConf.metaConf.bexManifestFile, { ignoreInitial: true })
+    this.#manifestWatcher.on('change', debounce(() => {
+      const { err, scriptList } = createManifest(quasarConf)
+      if (err !== void 0) return
+
+      const newSnapshot = setScripts(scriptList)
+
+      if (newSnapshot === scriptSnapshot) {
+        updateClient()
+        return
+      }
+
+      scriptSnapshot = newSnapshot
+      queue(() => this.#compileBexScripts(quasarConf).then(updateClient))
+    }, 500))
   }
 
   async #compileBexScripts (quasarConf) {
-    this.#scriptWatchers.forEach(watcher => { watcher.close() })
-    this.#scriptWatchers = []
+    await this.clearWatcherList(this.#scriptWatcherList, () => { this.#scriptWatcherList = [] })
 
-    const rebuilt = () => {
+    const onRebuild = () => {
       this.printBanner(quasarConf)
+      this.#reloadExtension()
     }
 
-    const backgroundConfig = await quasarBexConfig.backgroundScript(quasarConf)
-    await this.watchWithEsbuild('Background Script', backgroundConfig, rebuilt)
-      .then(esbuildCtx => { this.#scriptWatchers.push({ close: esbuildCtx.dispose }) })
+    for (const entry of this.#scriptList) {
+      const contentConfig = await quasarBexConfig.bexScript(quasarConf, entry)
 
-    for (const name of quasarConf.bex.contentScripts) {
-      const contentConfig = await quasarBexConfig.contentScript(quasarConf, name)
-
-      await this.watchWithEsbuild(`Content Script (${ name })`, contentConfig, rebuilt)
-        .then(esbuildCtx => { this.#scriptWatchers.push({ close: esbuildCtx.dispose }) })
+      await this.watchWithEsbuild(`Bex Script (${ entry.name })`, contentConfig, onRebuild)
+        .then(esbuildCtx => { this.#scriptWatcherList.push({ close: esbuildCtx.dispose }) })
     }
-
-    const domConfig = await quasarBexConfig.domScript(quasarConf)
-    await this.watchWithEsbuild('Dom Script', domConfig, rebuilt)
-      .then(esbuildCtx => { this.#scriptWatchers.push({ close: esbuildCtx.dispose }) })
   }
 
-  async #compileUI (quasarConf, queue) {
-    this.#uiWatchers.forEach(watcher => { watcher.close() })
-    this.#uiWatchers = []
+  async #runVite (quasarConf, queue) {
+    await this.clearWatcherList(this.#viteWatcherList, () => { this.#viteWatcherList = [] })
 
     const viteConfig = await quasarBexConfig.vite(quasarConf)
-    await this.buildWithVite('BEX UI', viteConfig)
 
-    await this.#runWatchers(quasarConf, viteConfig, queue)
-    this.printBanner(quasarConf)
-  }
+    if (this.ctx.target.firefox) {
+      await this.buildWithVite('BEX UI', viteConfig)
 
-  async #runWatchers (quasarConf, viteConfig, queue) {
-    this.#uiWatchers = [
-      this.#getViteWatcher(quasarConf, viteConfig, queue),
-      this.#getBexAssetsDirWatcher(quasarConf),
-      this.#getBexManifestWatcher(quasarConf)
-    ]
-
-    if (quasarConf.build.ignorePublicFolder !== true) {
-      this.#uiWatchers.push(
+      this.#viteWatcherList.push(
+        this.#getAppSourceWatcher(quasarConf, viteConfig, queue),
         this.#getPublicDirWatcher(quasarConf)
       )
     }
+    else {
+      this.#viteServer = await createServer(viteConfig)
+
+      await this.#viteServer.listen()
+
+      this.#viteWatcherList.push({
+        close: () => {
+          const server = this.#viteServer
+          this.#viteServer = null
+          return server.close()
+        }
+      })
+    }
+
+    this.#viteWatcherList.push(
+      this.#getBexAssetsDirWatcher(quasarConf)
+    )
+
+    this.printBanner(quasarConf)
   }
 
-  #getViteWatcher (quasarConf, viteConfig, queue) {
+  // chrome & firefox
+  #getBexAssetsDirWatcher (quasarConf) {
+    const folders = copyBexAssets(quasarConf)
+    const watcher = chokidar.watch(folders, { ignoreInitial: true })
+
+    const copy = debounce(() => {
+      copyBexAssets(quasarConf)
+      this.printBanner(quasarConf)
+
+      if (this.ctx.target.chrome) {
+        this.#reloadExtension()
+      }
+    }, 500)
+
+    watcher.on('add', copy)
+    watcher.on('change', copy)
+
+    return watcher
+  }
+
+  // firefox only
+  #getAppSourceWatcher (quasarConf, viteConfig, queue) {
     const watcher = chokidar.watch([
       this.ctx.appPaths.srcDir,
       this.ctx.appPaths.resolve.app('index.html')
@@ -121,7 +205,7 @@ export class QuasarModeDevserver extends AppDevserver {
         return this.buildWithVite('BEX UI', viteConfig)
           .then(() => { this.printBanner(quasarConf) })
       })
-    }, 1000)
+    }, 500)
 
     watcher.on('add', rebuild)
     watcher.on('change', rebuild)
@@ -130,46 +214,17 @@ export class QuasarModeDevserver extends AppDevserver {
     return watcher
   }
 
+  // firefox only
   #getPublicDirWatcher (quasarConf) {
     const watcher = chokidar.watch(this.ctx.appPaths.publicDir, { ignoreInitial: true })
 
     const copy = debounce(() => {
       fse.copySync(this.ctx.appPaths.publicDir, quasarConf.build.distDir)
       this.printBanner(quasarConf)
-    }, 1000)
+    }, 500)
 
     watcher.on('add', copy)
     watcher.on('change', copy)
-
-    return watcher
-  }
-
-  #getBexAssetsDirWatcher (quasarConf) {
-    const folders = copyBexAssets(quasarConf)
-    const watcher = chokidar.watch(folders, { ignoreInitial: true })
-
-    const copy = debounce(() => {
-      copyBexAssets(quasarConf)
-      this.printBanner(quasarConf)
-    }, 1000)
-
-    watcher.on('add', copy)
-    watcher.on('change', copy)
-
-    return watcher
-  }
-
-  #getBexManifestWatcher (quasarConf) {
-    const { err, filename } = createManifest(quasarConf)
-
-    if (err !== void 0) { process.exit(1) }
-
-    const watcher = chokidar.watch(filename, { ignoreInitial: true })
-
-    watcher.on('change', debounce(() => {
-      createManifest(quasarConf)
-      this.printBanner(quasarConf)
-    }, 1000))
 
     return watcher
   }

@@ -1,4 +1,4 @@
-import { store } from 'quasar/wrappers'
+import { defineStore } from '#q-app/wrappers'
 import { createStore } from 'vuex'
 
 // import example from './module-example'
@@ -12,7 +12,7 @@ import { createStore } from 'vuex'
  * with the Store instance.
  */
 
-export default store(function (/* { ssrContext } */) {
+export default defineStore(function (/* { ssrContext } */) {
   const Store = createStore({
     modules: {
       // example

@@ -6,7 +6,7 @@ const { openBrowser } = require('../../utils/open-browser.js')
 const { quasarSpaConfig } = require('./spa-config.js')
 
 module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevserver {
-  #server
+  #server = null
 
   run (quasarConf, __isRetry) {
     const { diff, queue } = super.run(quasarConf, __isRetry)
@@ -17,7 +17,7 @@ module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevser
   }
 
   async #runWebpack (quasarConf, urlDiffers) {
-    if (this.#server !== void 0) {
+    if (this.#server !== null) {
       await this.#server.stop()
       this.#server = null
     }

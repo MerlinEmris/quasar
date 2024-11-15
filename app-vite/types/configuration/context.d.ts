@@ -141,9 +141,16 @@ interface SsrQuasarContext extends BaseQuasarContext {
   modeName: "ssr";
 }
 
+type QuasarBexTargets = "chrome" | "firefox";
 interface BexQuasarContext extends BaseQuasarContext {
   mode: { bex: true };
   modeName: "bex";
+  /**
+   * App target.
+   */
+  target: Partial<Record<QuasarBexTargets, true>>;
+  /** App target name. */
+  targetName: QuasarBexTargets;
 }
 
 export type QuasarContext =

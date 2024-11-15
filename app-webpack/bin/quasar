@@ -5,6 +5,7 @@ require('../lib/node-version-check.js')
 const commands = [
   'dev',
   'build',
+  'prepare',
   'clean',
   'inspect',
   'describe',
@@ -13,7 +14,6 @@ const commands = [
   'mode',
   'info',
   'new',
-  'test',
   'help'
 ]
 
@@ -24,13 +24,13 @@ if (cmd) {
     const mapToCmd = {
       d: 'dev',
       b: 'build',
+      p: 'prepare',
       e: 'ext',
       r: 'run',
       c: 'clean',
       m: 'mode',
       i: 'info',
       n: 'new',
-      t: 'test',
       h: 'help'
     }
     cmd = mapToCmd[ cmd ]

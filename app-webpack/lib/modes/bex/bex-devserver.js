@@ -1,3 +1,5 @@
+const { join } = require('node:path')
+const fse = require('fs-extra')
 const debounce = require('lodash/debounce.js')
 const chokidar = require('chokidar')
 const webpack = require('webpack')
@@ -5,33 +7,48 @@ const WebpackDevServer = require('webpack-dev-server')
 
 const { AppDevserver } = require('../../app-devserver.js')
 const { quasarBexConfig } = require('./bex-config.js')
-const { createManifest, copyBexAssets } = require('./utils.js')
+const { createManifest, copyBexAssets } = require('./bex-utils.js')
+
+const reloadPayload = JSON.stringify({ type: 'custom', event: 'qbex:hmr:reload' })
 
 module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevserver {
-  #assetWatchers = []
-  #scriptWatchers = []
-  #server
+  #webpackWatcherList = []
+  #manifestWatcher = null
+  #scriptWatcherList = []
+
+  #webpackServer = null
+  #scriptList = []
+
+  #reloadExtension = () => {}
 
   constructor (opts) {
     super(opts)
 
-    this.registerDiff('bexScripts', (quasarConf, diffMap) => [
-      quasarConf.bex.contentScripts,
-      quasarConf.bex.extendBexScriptsConf,
-      quasarConf.build.distDir,
+    this.#reloadExtension = debounce(() => {
+      this.#webpackServer?.webSocketServer.clients.forEach(client => {
+        client.send(reloadPayload)
+      })
+    }, 200)
 
-      // extends 'esbuild' diff
-      ...diffMap.esbuild(quasarConf)
+    this.registerDiff('distDir', quasarConf => [
+      quasarConf.build.distDir
     ])
 
-    this.registerDiff('bexAssets', quasarConf => [
+    this.registerDiff('bexManifest', quasarConf => [
       quasarConf.sourceFiles.bexManifestFile,
       quasarConf.bex.extendBexManifestJson,
       quasarConf.build.distDir
     ])
 
-    this.registerDiff('distDir', quasarConf => [
-      quasarConf.build.distDir
+    this.registerDiff('bexScripts', (quasarConf, diffMap) => [
+      quasarConf.build.distDir,
+      quasarConf.devServer.port,
+
+      quasarConf.bex.extraScripts,
+      quasarConf.bex.extendBexScriptsConf,
+
+      // extends 'esbuild' diff
+      ...diffMap.esbuild(quasarConf)
     ])
   }
 
@@ -39,17 +56,11 @@ module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevser
     const { diff, queue } = super.run(quasarConf, __isRetry)
 
     if (diff('distDir', quasarConf)) {
-      this.#assetWatchers.forEach(watcher => { watcher.close() })
-      this.#assetWatchers = []
-
-      this.#scriptWatchers.forEach(watcher => { watcher.close() })
-      this.#scriptWatchers = []
-
-      this.cleanArtifacts(quasarConf.build.distDir)
+      return queue(() => this.#onDistDir(quasarConf))
     }
 
-    if (diff('bexAssets', quasarConf)) {
-      return queue(() => this.#compileBexAssets(quasarConf))
+    if (diff('bexManifest', quasarConf)) {
+      return queue(() => this.#compileBexManifest(quasarConf, queue))
     }
 
     if (diff('bexScripts', quasarConf)) {
@@ -61,74 +72,127 @@ module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevser
     }
   }
 
-  async #compileBexScripts (quasarConf) {
-    this.#scriptWatchers.forEach(watcher => { watcher.close() })
-    this.#scriptWatchers = []
-
-    const rebuilt = () => {
-      this.printBanner(quasarConf)
+  async #onDistDir (quasarConf) {
+    if (this.#manifestWatcher !== null) {
+      this.#manifestWatcher.close()
+      this.#manifestWatcher = null
     }
 
-    const backgroundConfig = await quasarBexConfig.backgroundScript(quasarConf)
-    await this.watchWithEsbuild('Background Script', backgroundConfig, rebuilt)
-      .then(esbuildCtx => { this.#scriptWatchers.push({ close: esbuildCtx.dispose }) })
+    await this.clearWatcherList(this.#webpackWatcherList, () => { this.#webpackWatcherList = [] })
+    await this.clearWatcherList(this.#scriptWatcherList, () => { this.#scriptWatcherList = [] })
 
-    for (const name of quasarConf.bex.contentScripts) {
-      const contentConfig = await quasarBexConfig.contentScript(quasarConf, name)
+    this.cleanArtifacts(quasarConf.build.distDir)
 
-      await this.watchWithEsbuild(`Content Script (${ name })`, contentConfig, rebuilt)
-        .then(esbuildCtx => { this.#scriptWatchers.push({ close: esbuildCtx.dispose }) })
-    }
-
-    const domConfig = await quasarBexConfig.domScript(quasarConf)
-    await this.watchWithEsbuild('Dom Script', domConfig, rebuilt)
-      .then(esbuildCtx => { this.#scriptWatchers.push({ close: esbuildCtx.dispose }) })
+    // ensure we have a stub www/index.html file otherwise the browser
+    // will complain about it not being found
+    const indexHtmlDir = join(quasarConf.build.distDir, 'www')
+    fse.ensureDirSync(indexHtmlDir)
+    fse.writeFileSync(join(indexHtmlDir, 'index.html'), '', 'utf-8')
   }
 
-  async #runWebpack (quasarConf) {
-    if (this.#server) {
-      await this.#server.stop()
-      this.#server = null
+  async #compileBexManifest (quasarConf, queue) {
+    if (this.#manifestWatcher !== null) {
+      this.#manifestWatcher.close()
     }
+
+    const { err, scriptList } = createManifest(quasarConf)
+    if (err !== void 0) process.exit(1)
+
+    const setScripts = jsList => {
+      this.#scriptList = jsList
+      return JSON.stringify(jsList)
+    }
+
+    let scriptSnapshot = setScripts(scriptList)
+    const updateClient = () => {
+      this.printBanner(quasarConf)
+      this.#reloadExtension()
+    }
+
+    this.#manifestWatcher = chokidar.watch(quasarConf.metaConf.bexManifestFile, { ignoreInitial: true })
+    this.#manifestWatcher.on('change', debounce(() => {
+      const { err, scriptList } = createManifest(quasarConf)
+      if (err !== void 0) return
+
+      const newSnapshot = setScripts(scriptList)
+
+      if (newSnapshot === scriptSnapshot) {
+        updateClient()
+        return
+      }
+
+      scriptSnapshot = newSnapshot
+      queue(() => this.#compileBexScripts(quasarConf).then(updateClient))
+    }, 500))
+  }
+
+  async #compileBexScripts (quasarConf) {
+    await this.clearWatcherList(this.#scriptWatcherList, () => { this.#scriptWatcherList = [] })
+
+    const onRebuild = () => {
+      this.printBanner(quasarConf)
+      this.#reloadExtension()
+    }
+
+    for (const entry of this.#scriptList) {
+      const contentConfig = await quasarBexConfig.bexScript(quasarConf, entry)
+
+      await this.watchWithEsbuild(`Bex Script (${ entry.name })`, contentConfig, onRebuild)
+        .then(esbuildCtx => { this.#scriptWatcherList.push({ close: esbuildCtx.dispose }) })
+    }
+  }
+
+  async #runWebpack (quasarConf, queue) {
+    await this.clearWatcherList(this.#webpackWatcherList, () => { this.#webpackWatcherList = [] })
 
     const webpackConf = await quasarBexConfig.webpack(quasarConf)
 
-    let started = false
+    if (this.ctx.target.firefox) {
+      await this.buildWithWebpack('BEX UI', webpackConf)
 
-    return new Promise(resolve => {
-      const compiler = webpack(webpackConf)
+      this.#webpackWatcherList.push(
+        this.#getAppSourceWatcher(quasarConf, webpackConf, queue),
+        this.#getPublicDirWatcher(quasarConf)
+      )
+    }
+    else {
+      let started = false
 
-      compiler.hooks.done.tap('done-compiling', stats => {
-        if (started === true) { return }
+      return new Promise(resolve => {
+        const compiler = webpack(webpackConf)
 
-        // start dev server if there are no errors
-        if (stats.hasErrors() === true) {
-          return
-        }
+        compiler.hooks.done.tap('done-compiling', stats => {
+          if (started === true) return
 
-        started = true
-        resolve()
+          // start dev server if there are no errors
+          if (stats.hasErrors() === true) return
 
-        this.printBanner(quasarConf)
+          started = true
+          resolve()
+
+          this.printBanner(quasarConf)
+        })
+
+        // start building & launch server
+        this.#webpackServer = new WebpackDevServer(quasarConf.devServer, compiler)
+        this.#webpackServer.start()
+
+        this.#webpackWatcherList.push({
+          close: () => {
+            const server = this.#webpackServer
+            this.#webpackServer = null
+            return server.stop()
+          }
+        })
       })
+    }
 
-      // start building & launch server
-      this.#server = new WebpackDevServer(quasarConf.devServer, compiler)
-      this.#server.start()
-    })
+    this.#webpackWatcherList.push(
+      this.#getBexAssetsDirWatcher(quasarConf)
+    )
   }
 
-  async #compileBexAssets (quasarConf) {
-    this.#assetWatchers.forEach(watcher => { watcher.close() })
-
-    this.#assetWatchers = [
-      this.#getBexAssetsDirWatcher(quasarConf),
-      this.#getBexManifestWatcher(quasarConf)
-    ]
-
-    this.printBanner(quasarConf)
-  }
-
+  // chrome & firefox
   #getBexAssetsDirWatcher (quasarConf) {
     const folders = copyBexAssets(quasarConf)
     const watcher = chokidar.watch(folders, { ignoreInitial: true })
@@ -136,7 +200,11 @@ module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevser
     const copy = debounce(() => {
       copyBexAssets(quasarConf)
       this.printBanner(quasarConf)
-    }, 1000)
+
+      if (this.ctx.target.chrome) {
+        this.#reloadExtension()
+      }
+    }, 500)
 
     watcher.on('add', copy)
     watcher.on('change', copy)
@@ -144,17 +212,40 @@ module.exports.QuasarModeDevserver = class QuasarModeDevserver extends AppDevser
     return watcher
   }
 
-  #getBexManifestWatcher (quasarConf) {
-    const { err, filename } = createManifest(quasarConf)
+  // firefox only
+  #getAppSourceWatcher (quasarConf, webpackConf, queue) {
+    const watcher = chokidar.watch([
+      this.ctx.appPaths.srcDir,
+      this.ctx.appPaths.resolve.app(quasarConf.sourceFiles.indexHtmlTemplate)
+    ], {
+      ignoreInitial: true
+    })
 
-    if (err !== void 0) { process.exit(1) }
+    const rebuild = debounce(() => {
+      queue(() => {
+        return this.buildWithWebpack('BEX UI', webpackConf)
+          .then(() => { this.printBanner(quasarConf) })
+      })
+    }, 500)
 
-    const watcher = chokidar.watch(filename, { ignoreInitial: true })
+    watcher.on('add', rebuild)
+    watcher.on('change', rebuild)
+    watcher.on('unlink', rebuild)
 
-    watcher.on('change', debounce(() => {
-      createManifest(quasarConf)
+    return watcher
+  }
+
+  // firefox only
+  #getPublicDirWatcher (quasarConf) {
+    const watcher = chokidar.watch(this.ctx.appPaths.publicDir, { ignoreInitial: true })
+
+    const copy = debounce(() => {
+      fse.copySync(this.ctx.appPaths.publicDir, quasarConf.build.distDir)
       this.printBanner(quasarConf)
-    }, 1000))
+    }, 500)
+
+    watcher.on('add', copy)
+    watcher.on('change', copy)
 
     return watcher
   }

@@ -1,4 +1,3 @@
-
 import { readFileSync } from 'node:fs'
 
 console.log(
@@ -29,6 +28,7 @@ console.log(`
   Commands
     dev, d        Start a dev server for your App
     build, b      Build your app for production
+    prepare, p    Prepare the app for linting, type-checking, IDE integration, etc.
     clean, c      Clean dev/build cache, /dist folder & entry points
     new, n        Quickly scaffold page/layout/component/... vue file
     mode, m       Add/remove Quasar Modes for your App
@@ -39,9 +39,6 @@ console.log(`
     run, r        Run specific command provided by an installed
                     Quasar App Extension
     describe      Describe a Quasar API (component)
-    test, t       Run @quasar/testing App Extension command
-                    - requires @quasar/testing App Extension to be installed
-                    - this is an alias command for convenience purposes
     info, i       Display info about your machine and your App
     help, h       Displays this message
 

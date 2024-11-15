@@ -18,8 +18,7 @@ import { <%= ctx.mode.ssr ? 'createSSRApp' : 'createApp' %> } from 'vue'
 <% } %>
 
 <% if (ctx.mode.bex) { %>
-import { uid } from 'quasar'
-import BexBridge from './bex-bridge.js'
+import './bex-app.js'
 <% } %>
 
 <% const bootEntries = boot.filter(asset => asset.client !== false) %>
@@ -171,79 +170,9 @@ async function start ({
         app.config.globalProperties.$q.cordova = window.cordova
         app.mount('#q-app')
       }, false) // on deviceready
-    <% } else if (!ctx.mode.bex) { %>
+    <% } else { %>
       app.mount('#q-app')
     <% } %>
-
-    <% if (ctx.mode.bex) { %>
-      function connect () {
-        const buildConnection = (id, cb) => {
-          const port = chrome.runtime.connect({
-            name: 'app:' + id
-          })
-
-          let disconnected = false
-          port.onDisconnect.addListener(() => {
-            disconnected = true
-          })
-
-          let bridge = new BexBridge({
-            listen (fn) {
-              port.onMessage.addListener(fn)
-            },
-            send (data) {
-              if (!disconnected) {
-                port.postMessage(data)
-              }
-            }
-          })
-
-          cb(bridge)
-        }
-
-        const fallbackConnection = cb => {
-          // If we're not in a proper web browser tab, generate an id so we have a unique connection to whatever it is.
-          // this could be the popup window or the options window (As they don't have tab ids)
-          // If dev tools is available, it means we're on it. Use that for the id.
-          const tabId = chrome.devtools ? chrome.devtools.inspectedWindow.tabId : uid()
-          buildConnection(tabId, cb)
-        }
-
-        const shellConnect = cb => {
-          if (chrome.tabs && !chrome.devtools) {
-            // If we're on a web browser tab, use the current tab id to connect to the app.
-            chrome.tabs.getCurrent(tab => {
-              if (tab && tab.id) {
-                buildConnection(tab.id, cb)
-              }
-              else {
-                fallbackConnection(cb)
-              }
-            })
-          }
-          else {
-            fallbackConnection(cb)
-          }
-        }
-
-        shellConnect(bridge => {
-          window.QBexBridge = bridge
-          app.config.globalProperties.$q.bex = window.QBexBridge
-          app.mount('#q-app')
-        })
-      }
-
-      if (chrome.runtime.id) {
-        // Chrome ~73 introduced a change which requires the background connection to be
-        // active before the client this makes sure the connection has had time before progressing.
-        // Could also implement a ping pattern and connect when a valid response is received
-        // but this way seems less overhead.
-        setTimeout(() => {
-          connect()
-        }, 300)
-      }
-    <% } %>
-
   <% } // end of Non SSR %>
 
 }

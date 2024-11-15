@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, isAbsolute } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { createServer } from 'vite'
+import { createServer, createServerModuleRunner } from 'vite'
 import chokidar from 'chokidar'
 import debounce from 'lodash/debounce.js'
 import serialize from 'serialize-javascript'
+import { green } from 'kolorist'
 
 import { AppDevserver } from '../../app-devserver.js'
 import { getPackage } from '../../utils/get-package.js'
@@ -20,36 +21,17 @@ const autoRemove = 'document.currentScript.remove()'
 
 function logServerMessage (title, msg, additional) {
   log()
-  info(`${ msg }${ additional !== void 0 ? ` ${ dot } ${ additional }` : '' }`, title)
+  info(`${ msg }${ additional !== void 0 ? ` ${ green(dot) } ${ additional }` : '' }`, title)
 }
 
-let renderSSRError
+let renderSSRError = null
+let vueRenderToString = null
+
 function renderError ({ err, req, res }) {
   log()
   warn(req.url, 'Render failed')
 
   renderSSRError({ err, req, res })
-}
-
-async function warmupServer ({ viteClient, viteServer, clientEntry, serverEntry }) {
-  const done = progress('Warming up...')
-
-  if (renderSSRError === void 0) {
-    const { default: render } = await import('@quasar/render-ssr-error')
-    renderSSRError = render
-  }
-
-  try {
-    await viteServer.ssrLoadModule(serverEntry)
-    await viteClient.transformRequest(clientEntry)
-  }
-  catch (err) {
-    warn('Warmup failed!', 'FAIL')
-    console.error(err)
-    return
-  }
-
-  done('Warmed up')
 }
 
 function renderStoreState (ssrContext) {
@@ -62,11 +44,11 @@ function renderStoreState (ssrContext) {
 }
 
 export class QuasarModeDevserver extends AppDevserver {
-  #closeWebserver
-  #viteClient
-  #viteServer
-  #htmlWatcher
-  #webserverWatcher
+  #webserver = null
+  #viteClient = null
+  #viteWatcherList = []
+  #webserverWatcher = null
+
   /**
    * @type {{
    *  port: number;
@@ -82,7 +64,6 @@ export class QuasarModeDevserver extends AppDevserver {
   #pwaServiceWorkerWatcher
 
   #pathMap = {}
-  #vueRenderToString = null
 
   constructor (opts) {
     super(opts)
@@ -97,7 +78,10 @@ export class QuasarModeDevserver extends AppDevserver {
       serverFile: appPaths.resolve.entry('compiled-dev-webserver.mjs'),
       serverEntryFile: appPaths.resolve.entry('server-entry.mjs'),
       resolvePublicFolder () {
-        return join(publicFolder, ...arguments)
+        const dir = join(...arguments)
+        return isAbsolute(dir) === true
+          ? dir
+          : join(publicFolder, dir)
       }
     }
 
@@ -167,29 +151,34 @@ export class QuasarModeDevserver extends AppDevserver {
   }
 
   async #compileWebserver (quasarConf, queue) {
-    if (this.#webserverWatcher) {
+    if (this.#webserverWatcher !== null) {
       await this.#webserverWatcher.close()
     }
 
     const esbuildConfig = await quasarSsrConfig.webserver(quasarConf)
     await this.watchWithEsbuild('SSR Webserver', esbuildConfig, () => {
-      if (this.#closeWebserver !== void 0) {
-        queue(async () => {
-          await this.#closeWebserver()
-          return this.#bootWebserver(quasarConf)
-        })
-      }
+      queue(() => this.#bootWebserver(quasarConf))
     }).then(esbuildCtx => {
-      this.#webserverWatcher = { close: esbuildCtx.dispose }
+      this.#webserverWatcher = {
+        close: () => {
+          this.#webserverWatcher = null
+          return esbuildCtx.dispose()
+        }
+      }
     })
   }
 
   async #runVite (quasarConf, urlDiffers) {
-    if (this.#closeWebserver !== void 0) {
-      this.#htmlWatcher.close()
-      this.#viteClient.close()
-      this.#viteServer.close()
-      await this.#closeWebserver()
+    await this.clearWatcherList(this.#viteWatcherList, () => { this.#viteWatcherList = [] })
+
+    if (renderSSRError === null) {
+      const { default: render } = await import('@quasar/render-ssr-error')
+      renderSSRError = render
+    }
+
+    if (vueRenderToString === null) {
+      const { renderToString } = await getPackage('vue/server-renderer', quasarConf.ctx.appPaths.appDir)
+      vueRenderToString = renderToString
     }
 
     this.#appOptions.port = quasarConf.devServer.port
@@ -200,7 +189,15 @@ export class QuasarModeDevserver extends AppDevserver {
       : url => (url ? (publicPath + url).replace(doubleSlashRE, '/') : publicPath)
 
     const viteClient = this.#viteClient = await createServer(await quasarSsrConfig.viteClient(quasarConf))
-    const viteServer = this.#viteServer = await createServer(await quasarSsrConfig.viteServer(quasarConf))
+    this.#viteWatcherList.push({
+      close: () => {
+        this.#viteClient = null
+        return viteClient.close()
+      }
+    })
+
+    const viteServer = await createServer(await quasarSsrConfig.viteServer(quasarConf))
+    this.#viteWatcherList.push(viteServer)
 
     if (quasarConf.ssr.pwa === true) {
       injectPwaManifest(quasarConf, true)
@@ -217,14 +214,15 @@ export class QuasarModeDevserver extends AppDevserver {
 
     updateTemplate()
 
-    this.#htmlWatcher = chokidar.watch(this.#pathMap.templatePath).on('change', updateTemplate)
+    this.#viteWatcherList.push(
+      chokidar.watch(this.#pathMap.templatePath)
+        .on('change', updateTemplate)
+    )
 
-    if (this.#vueRenderToString === null) {
-      const { renderToString } = await getPackage('vue/server-renderer', quasarConf.ctx.appPaths.appDir)
-      this.#vueRenderToString = renderToString
-    }
+    const viteModuleRunner = createServerModuleRunner(viteServer.environments.ssr)
+    this.#viteWatcherList.push(viteModuleRunner)
 
-    this.#appOptions.render = async (ssrContext) => {
+    this.#appOptions.render = async ssrContext => {
       const startTime = Date.now()
       const onRenderedList = []
 
@@ -234,10 +232,10 @@ export class QuasarModeDevserver extends AppDevserver {
       })
 
       try {
-        const renderApp = await viteServer.ssrLoadModule(this.#pathMap.serverEntryFile)
+        const renderApp = await viteModuleRunner.import(this.#pathMap.serverEntryFile)
 
         const app = await renderApp.default(ssrContext)
-        const runtimePageContent = await this.#vueRenderToString(app, ssrContext)
+        const runtimePageContent = await vueRenderToString(app, ssrContext)
 
         onRenderedList.forEach(fn => { fn() })
 
@@ -267,13 +265,6 @@ export class QuasarModeDevserver extends AppDevserver {
       }
     }
 
-    await warmupServer({
-      viteClient,
-      viteServer,
-      clientEntry: quasarConf.metaConf.entryScriptWebPath,
-      serverEntry: this.#pathMap.serverEntryFile
-    })
-
     await this.#bootWebserver(quasarConf)
 
     if (urlDiffers === true && quasarConf.metaConf.openBrowser) {
@@ -286,7 +277,11 @@ export class QuasarModeDevserver extends AppDevserver {
   }
 
   async #bootWebserver (quasarConf) {
-    const done = progress(`${ this.#closeWebserver !== void 0 ? 'Restarting' : 'Starting' } webserver...`)
+    const done = progress('Booting Webserver...')
+
+    if (this.#webserver !== null) {
+      await this.#webserver.close()
+    }
 
     const { create, listen, close, injectMiddlewares, serveStaticContent } = await import(
       pathToFileURL(this.#pathMap.serverFile) + '?t=' + Date.now()
@@ -298,7 +293,7 @@ export class QuasarModeDevserver extends AppDevserver {
       port: this.#appOptions.port,
       resolve: {
         urlPath: this.#appOptions.resolveUrlPath,
-        root () { return join(this.#pathMap.rootFolder, ...arguments) },
+        root: (...args) => join(this.#pathMap.rootFolder, ...args),
         public: resolvePublicFolder
       },
       publicPath,
@@ -306,28 +301,25 @@ export class QuasarModeDevserver extends AppDevserver {
         root: this.#pathMap.rootFolder,
         public: this.#pathMap.publicFolder
       },
-      render: this.#appOptions.render,
-      serve: {
-        static: (pathToServe, opts = {}) => serveStaticContent(resolvePublicFolder(pathToServe), opts),
-        error: renderError
-      }
+      render: this.#appOptions.render
     }
 
-    const app = middlewareParams.app = create(middlewareParams)
-    const { proxy: proxyConf } = quasarConf.devServer
+    const app = middlewareParams.app = await create(middlewareParams)
 
-    if (Object(proxyConf) === proxyConf) {
-      const { createProxyMiddleware } = await import('http-proxy-middleware')
-
-      Object.keys(proxyConf).forEach(path => {
-        const cfg = quasarConf.devServer.proxy[ path ]
-        app.use(path, createProxyMiddleware(cfg))
-      })
+    const serveStatic = await serveStaticContent(middlewareParams)
+    middlewareParams.serve = {
+      static: serveStatic,
+      error: renderError
     }
 
     // vite devmiddleware modifies req.url to account for publicPath
     // but we'll break usage in the webserver if we do so
     app.use((req, res, next) => {
+      if (this.#viteClient === null) {
+        next()
+        return
+      }
+
       const { url } = req
       this.#viteClient.middlewares.handle(req, res, err => {
         req.url = url
@@ -350,7 +342,8 @@ export class QuasarModeDevserver extends AppDevserver {
         res.end()
         return
       }
-      else if (req.headers.accept && req.headers.accept.includes('text/html')) {
+
+      if (req.headers.accept && req.headers.accept.includes('text/html')) {
         const parsedPath = pathname.slice(1)
         const redirectPaths = [ publicPath + parsedPath ]
         const splitted = parsedPath.split('/')
@@ -378,29 +371,24 @@ export class QuasarModeDevserver extends AppDevserver {
       next()
     })
 
-    const isReady = () => Promise.resolve()
-
     if (quasarConf.devServer.https) {
       const https = await import('node:https')
       middlewareParams.devHttpsApp = https.createServer(quasarConf.devServer.https, app)
     }
 
-    const listenResult = await listen({
-      isReady,
-      ssrHandler: (req, res, next) => {
-        return isReady().then(() => app(req, res, next))
-      },
-      ...middlewareParams
-    })
+    middlewareParams.listenResult = await listen(middlewareParams)
 
-    this.#closeWebserver = () => close({
-      ...middlewareParams,
-      listenResult
-    })
+    this.#webserver = {
+      close: () => {
+        this.#webserver = null
+        return close(middlewareParams)
+      }
+    }
 
     done('Webserver is ready')
 
     this.printBanner(quasarConf)
+    this.#viteClient?.ws.send({ type: 'full-reload' })
   }
 
   // also update pwa-devserver.js when changing here
@@ -419,13 +407,7 @@ export class QuasarModeDevserver extends AppDevserver {
       { ignoreInitial: true }
     ).on('change', debounce(() => {
       inject()
-
-      if (this.#viteClient !== void 0) {
-        this.#viteClient.ws.send({
-          type: 'full-reload',
-          path: '*'
-        })
-      }
+      this.#viteClient?.ws.send({ type: 'full-reload' })
     }, 550))
 
     inject()

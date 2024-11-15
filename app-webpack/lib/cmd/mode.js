@@ -44,10 +44,12 @@ if (argv._.length !== 0 && argv._.length !== 2) {
 const { green, gray } = require('kolorist')
 
 const { getCtx } = require('../utils/get-ctx.js')
-const ctx = getCtx()
+const { generateTypes } = require('../types-generator.js')
+const { isModeInstalled } = require('../modes/modes-utils.js')
 
 async function run () {
   const [ action, mode ] = argv._
+  const ctx = getCtx({ mode })
 
   if (![ 'add', 'remove' ].includes(action)) {
     console.log()
@@ -60,13 +62,13 @@ async function run () {
     fatal(`Unknown mode "${ mode }" to ${ action }`)
   }
 
-  const { isModeInstalled, addMode, removeMode } = require(`../modes/${ mode }/${ mode }-installation.js`)
+  const { addMode, removeMode } = require(`../modes/${ mode }/${ mode }-installation.js`)
   const actionMap = { add: addMode, remove: removeMode }
 
-  if (action === 'remove' && argv.yes !== true && isModeInstalled(ctx.appPaths)) {
+  if (action === 'remove' && argv.yes !== true && isModeInstalled(ctx.appPaths, mode)) {
     console.log()
 
-    const inquirer = require('inquirer')
+    const { default: inquirer } = await import('inquirer')
     const answer = await inquirer.prompt([ {
       name: 'go',
       type: 'confirm',
@@ -83,17 +85,30 @@ async function run () {
   }
 
   await actionMap[ action ]({ ctx })
+
+  // Ensure types are re-generated accordingly
+  const { QuasarConfigFile } = await import('../quasar-config-file.js')
+  const quasarConfFile = new QuasarConfigFile({
+    ctx,
+    // host and port don't matter for this command
+    port: 9000,
+    host: 'localhost'
+  })
+  await quasarConfFile.init()
+  const quasarConf = await quasarConfFile.read()
+  generateTypes(quasarConf)
 }
 
 async function displayModes () {
   log('Detecting installed modes...')
 
+  const ctx = getCtx()
   const info = []
+
   for (const mode of [ 'pwa', 'ssr', 'cordova', 'capacitor', 'electron', 'bex' ]) {
-    const { isModeInstalled } = require(`../modes/${ mode }/${ mode }-installation.js`)
     info.push([
       `Mode ${ mode.toUpperCase() }`,
-      isModeInstalled(ctx.appPaths) ? green('yes') : gray('no')
+      isModeInstalled(ctx.appPaths, mode) ? green('yes') : gray('no')
     ])
   }
 

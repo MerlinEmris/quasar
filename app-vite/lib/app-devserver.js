@@ -1,8 +1,8 @@
-
 import { AppTool } from './app-tool.js'
 import { printDevRunningBanner } from './utils/banner.js'
 import { encodeForDiff } from './utils/encode-for-diff.js'
 import { EntryFilesGenerator } from './entry-files-generator.js'
+import { generateTypes } from './types-generator.js'
 
 function getConfSnapshot (extractFn, quasarConf, diffExtractFnMap) {
   return extractFn(quasarConf, diffExtractFnMap).map(item => (item ? encodeForDiff(item) : ''))
@@ -37,12 +37,16 @@ export class AppDevserver extends AppTool {
       quasarConf.ssr.manualPostHydrationTrigger
     ]))
 
+    this.registerDiff('types', quasarConf => ([
+      quasarConf.build.typescript,
+      quasarConf.build.alias
+    ]))
+
     this.registerDiff('viteUrl', quasarConf => ([
       quasarConf.metaConf.APP_URL
     ]))
 
     this.registerDiff('vite', quasarConf => ([
-      quasarConf.eslint,
       quasarConf.htmlVariables,
       quasarConf.devServer,
       quasarConf.build,
@@ -50,7 +54,6 @@ export class AppDevserver extends AppTool {
     ]))
 
     this.registerDiff('esbuild', quasarConf => [
-      quasarConf.eslint,
       quasarConf.build.env,
       quasarConf.build.rawDefine,
       quasarConf.metaConf.fileEnv,
@@ -64,6 +67,10 @@ export class AppDevserver extends AppTool {
   run (quasarConf, __isRetry) {
     if (this.#diff('entryFiles', quasarConf)) {
       this.#entryFiles.generate(quasarConf)
+    }
+
+    if (this.#diff('types', quasarConf)) {
+      generateTypes(quasarConf)
     }
 
     if (__isRetry !== true) {
@@ -125,6 +132,15 @@ export class AppDevserver extends AppTool {
     }
 
     return false
+  }
+
+  async clearWatcherList (watcherList, clearFn) {
+    const list = watcherList.slice()
+    clearFn()
+
+    for (const watcher of list) {
+      await watcher.close()
+    }
   }
 
   printBanner (quasarConf) {

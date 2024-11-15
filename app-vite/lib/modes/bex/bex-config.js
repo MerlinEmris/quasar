@@ -1,54 +1,66 @@
-
 import { join } from 'node:path'
-import { readFileSync, writeFileSync } from 'node:fs'
+
+import { mergeConfig as mergeViteConfig } from 'vite'
 
 import {
   createViteConfig, extendViteConfig,
   createBrowserEsbuildConfig, extendEsbuildConfig
 } from '../../config-tools.js'
 
-import { resolveToCliDir } from '../../utils/cli-runtime.js'
+import { getBuildSystemDefine } from '../../utils/env.js'
 
-const contentScriptTemplate = readFileSync(
-  resolveToCliDir('templates/bex/entry-content-script.js'),
-  'utf-8'
-)
-
-async function createScript (quasarConf, scriptName, entry) {
-  const cfg = await createBrowserEsbuildConfig(quasarConf, { compileId: `browser-bex-${ scriptName }` })
-
-  cfg.entryPoints = [
-    entry || quasarConf.ctx.appPaths.resolve.entry(`bex-entry-${ scriptName }.js`)
-  ]
-
-  cfg.outfile = join(quasarConf.build.distDir, `${ scriptName }.js`)
-
-  return extendEsbuildConfig(cfg, quasarConf.bex, quasarConf.ctx, 'extendBexScriptsConf')
+function generateDefaultEntry (quasarConf) {
+  return {
+    name: 'file', // or subdir/file (regardless of OS)
+    from: quasarConf.ctx.appPaths.resolve.bex('file.js'),
+    to: join(quasarConf.build.distDir, 'file.js')
+  }
 }
 
 export const quasarBexConfig = {
   vite: async quasarConf => {
-    const cfg = await createViteConfig(quasarConf, { compileId: 'vite-bex' })
+    let cfg = await createViteConfig(quasarConf, { compileId: 'vite-bex' })
 
-    cfg.build.outDir = join(quasarConf.build.distDir, 'www')
+    cfg = mergeViteConfig(cfg, {
+      server: {
+        // Vite will fail to infer the @vite/client
+        // configuration for the client (will guess hostname and protocol wrong,
+        // due to it being chrome-extension://<runtime-id>/) and it will output an error
+        // that Websocket couldn't connect then: "Direct websocket connection fallback."
+        // --- So we avoid that by enforcing the correct values:
+        hmr: {
+          protocol: 'ws',
+          host: 'localhost',
+          port: quasarConf.devServer.port
+        }
+      }
+    })
+
+    if (quasarConf.ctx.target.firefox) {
+      cfg.build.outDir = join(quasarConf.build.distDir, 'www')
+    }
 
     return extendViteConfig(cfg, quasarConf, { isClient: true })
   },
 
-  contentScript: (quasarConf, name) => {
-    const entry = quasarConf.ctx.appPaths.resolve.entry(`bex-entry-content-script-${ name }.js`)
+  bexScript (quasarConf, entry = generateDefaultEntry(quasarConf)) {
+    const cfg = createBrowserEsbuildConfig(quasarConf, { compileId: `bex:script:${ entry.name }` })
 
-    writeFileSync(
-      entry,
-      contentScriptTemplate.replace('__NAME__', name),
-      'utf-8'
-    )
+    cfg.define = {
+      ...cfg.define,
+      ...getBuildSystemDefine({
+        buildEnv: {
+          __QUASAR_BEX_SCRIPT_NAME__: entry.name,
+          __QUASAR_BEX_SERVER_PORT__: quasarConf.devServer.port || 0
+        }
+      })
+    }
 
-    return createScript(quasarConf, name, entry)
-  },
+    cfg.entryPoints = [ entry.from ]
+    cfg.outfile = entry.to
 
-  backgroundScript: quasarConf => createScript(quasarConf, 'background'),
-  domScript: quasarConf => createScript(quasarConf, 'dom')
+    return extendEsbuildConfig(cfg, quasarConf.bex, quasarConf.ctx, 'extendBexScriptsConf')
+  }
 }
 
 export const modeConfig = quasarBexConfig

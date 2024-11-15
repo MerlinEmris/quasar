@@ -7,18 +7,14 @@ const { log, warn } = require('../../utils/logger.js')
 const { spawnSync } = require('../../utils/spawn.js')
 
 const { ensureDeps, ensureConsistency } = require('./ensure-consistency.js')
-
-function isModeInstalled (appPaths) {
-  return fs.existsSync(appPaths.capacitorDir)
-}
-module.exports.isModeInstalled = isModeInstalled
+const { isModeInstalled } = require('../modes-utils.js')
 
 module.exports.addMode = async function addMode ({
   ctx: { appPaths, cacheProxy, pkg: { appPkg } },
   silent,
   target
 }) {
-  if (isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'capacitor')) {
     if (target) {
       addPlatform(target, appPaths, cacheProxy)
     }
@@ -41,7 +37,7 @@ module.exports.addMode = async function addMode ({
 
   console.log()
 
-  const inquirer = require('inquirer')
+  const { default: inquirer } = await import('inquirer')
   const answer = await inquirer.prompt([ {
     name: 'appId',
     type: 'input',
@@ -103,7 +99,7 @@ module.exports.addMode = async function addMode ({
 module.exports.removeMode = function removeMode ({
   ctx: { appPaths }
 }) {
-  if (!isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'capacitor') === false) {
     warn('No Capacitor support detected. Aborting.')
     return
   }

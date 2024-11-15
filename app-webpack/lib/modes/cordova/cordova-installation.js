@@ -1,22 +1,17 @@
 const fs = require('node:fs')
 const fse = require('fs-extra')
-const inquirer = require('inquirer')
 
 const { log, warn, fatal } = require('../../utils/logger.js')
 const { spawnSync } = require('../../utils/spawn.js')
 const { ensureWWW, ensureConsistency } = require('./ensure-consistency.js')
-
-function isModeInstalled (appPaths) {
-  return fs.existsSync(appPaths.cordovaDir)
-}
-module.exports.isModeInstalled = isModeInstalled
+const { isModeInstalled } = require('../modes-utils.js')
 
 module.exports.addMode = async function addMode ({
   ctx: { appPaths, pkg: { appPkg } },
   silent,
   target
 }) {
-  if (isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'cordova')) {
     if (target) {
       addPlatform(appPaths, target)
     }
@@ -38,6 +33,7 @@ module.exports.addMode = async function addMode ({
   }
 
   console.log()
+  const { default: inquirer } = await import('inquirer')
   const answer = await inquirer.prompt([ {
     name: 'appId',
     type: 'input',
@@ -84,7 +80,7 @@ module.exports.addMode = async function addMode ({
 module.exports.removeMode = function removeMode ({
   ctx: { appPaths }
 }) {
-  if (!isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'cordova') === false) {
     warn('No Cordova support detected. Aborting.')
     return
   }

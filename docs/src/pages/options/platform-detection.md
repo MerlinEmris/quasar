@@ -10,7 +10,7 @@ Helpers are built into Quasar to detect the Platform (and its capabilities) with
 Based on your needs, you might also want to check the [Style & Identity &gt; Visibility](/style/visibility) page to see how you can achieve the same effect using CSS alone. This latter method will render your DOM elements or components regardless of platform though, so choose wisely on how you want to handle the performance of your app.
 :::
 
-<doc-api file="Platform" />
+<DocApi file="Platform" />
 
 ## Usage
 Usage inside a Vue component JS:
@@ -68,7 +68,7 @@ Now, let's say we want to render different components or DOM elements, based on 
 </div>
 ```
 
-<doc-example title="Your device" file="Basic" />
+<DocExample title="Your device" file="Basic" />
 
 ## Properties
 
@@ -99,10 +99,13 @@ The following properties are available to the Platform object. It's not an exhau
 | `Platform.is.playbook`   | Boolean | Is the code running on a Blackberry Playbook device? |
 | `Platform.is.silk`       | Boolean | Is the code running the Kindle Silk browser? |
 | `Platform.is.chrome`     | Boolean | Is the code running inside the Google Chrome browser? |
+| `Platform.is.firefox`     | Boolean | Is the code running inside the Firefox browser? |
 | `Platform.is.opera`      | Boolean | Is the code running inside the Opera browser? |
 | `Platform.is.safari`     | Boolean | Is the code running inside the Apple Safari browser? |
+| `Platform.is.vivaldi`     | Boolean | Is the code running inside the Vivaldi browser? |
 | `Platform.is.edge`       | Boolean | Is the code running inside the Microsoft Edge browser? |
 | `Platform.is.ie`         | Boolean | Is the code running inside the Microsoft Internet Explorer browser? |
+| `Platform.is.webkit`     | Boolean | Is the code running on Webkit or webkit-based? |
 | `Platform.has.touch`     | Boolean | Is the code running on a touch capable screen?         |
 | `Platform.within.iframe` | Boolean | Is the app running within an IFRAME?                   |
 
@@ -111,7 +114,7 @@ Running on mobile means you can have this code running on a mobile device (phone
 :::
 
 ## Note about SSR
-When building for SSR, use only the `$q.platform` form. If you need to use the `import { Platform } from 'quasar'` (when on server-side), then you'll need to do it like this:
+When building for SSR, use only the `$q.platform` form. Alternatively, when on server-side, this is one more example of how you can use it:
 
 ```js
 import { Platform } from 'quasar'

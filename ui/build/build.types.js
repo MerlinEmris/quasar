@@ -1,10 +1,12 @@
-const fs = require('fs')
-const path = require('path')
-const prettier = require('prettier')
+import path from 'node:path'
+import fse from 'fs-extra'
+import prettier from 'prettier'
+import ts from 'typescript'
 
-const { logError, writeFile, clone } = require('./build.utils')
-const typeRoot = path.resolve(__dirname, '../types')
-const distRoot = path.resolve(__dirname, '../dist/types')
+import { resolveToRoot, logError, writeFile, clone } from './build.utils.js'
+
+const typeRoot = resolveToRoot('types')
+const distRoot = resolveToRoot('dist/types')
 const resolvePath = file => path.resolve(distRoot, file)
 const toCamelCase = str => str.replace(/(-\w)/g, m => m[ 1 ].toUpperCase())
 
@@ -40,10 +42,10 @@ const fallbackComplexTypeMap = new Map([
 ])
 
 const dontNarrowValues = [
-  '(Boolean) true',
-  '(Boolean) false',
-  '(CSS selector)',
-  '(DOM Element)'
+  'true',
+  'false',
+  '# CSS selector',
+  '# DOM Element'
 ]
 
 function convertTypeVal (type, def) {
@@ -52,10 +54,8 @@ function convertTypeVal (type, def) {
   }
 
   if (def.values && type === 'String') {
-    const narrowedValues = def.values.filter(v =>
-      !dontNarrowValues.includes(v)
-      && typeof v === 'string'
-    ).map(v => `'${ v }'`)
+    const narrowedValues = def.values
+      .filter(v => !dontNarrowValues.includes(v))
 
     if (narrowedValues.length) {
       return narrowedValues.join(' | ')
@@ -199,27 +199,30 @@ function getInjectionDefinition (propertyName, typeDef, typeName) {
  * @returns {Promise<void>[]}
  */
 function copyPredefinedTypes (dir, parentDir) {
-  return fs.readdirSync(dir)
+  return fse.readdirSync(dir)
     .filter(file => path.basename(file).startsWith('.') !== true)
     .flatMap(async file => {
       const fullPath = path.resolve(dir, file)
-      const stats = fs.lstatSync(fullPath)
+      const stats = fse.lstatSync(fullPath)
       if (stats.isFile()) {
         return writeFile(
           resolvePath(parentDir ? parentDir + file : file),
-          fs.readFileSync(fullPath)
+          fse.readFileSync(fullPath)
         )
       }
       else if (stats.isDirectory()) {
         const p = resolvePath(parentDir ? parentDir + file : file)
-        if (!fs.existsSync(p)) {
-          fs.mkdirSync(p)
-        }
+        fse.ensureDirSync(p)
         return copyPredefinedTypes(fullPath, parentDir ? parentDir + file : file + '/')
       }
     })
 }
 
+// Add types that should not be imported from ./api, but rather defined globally or generated in the final index.d.ts
+const extraInterfaceExclusions = [
+  'IntersectionObserverEntry',
+  'File'
+]
 function addToExtraInterfaces (def) {
   if (def !== void 0 && def !== null && def.tsType !== void 0) {
     // When a type name is found and it has autoDefineTsType and a definition,
@@ -234,7 +237,7 @@ function addToExtraInterfaces (def) {
         extraInterfaces[ def.tsType ] = getPropDefinitions({ definitions: def.definition })
       }
     }
-    else if (!extraInterfaces.hasOwnProperty(def.tsType)) {
+    else if (!extraInterfaces.hasOwnProperty(def.tsType) && !extraInterfaceExclusions.includes(def.tsType)) {
       extraInterfaces[ def.tsType ] = void 0
     }
   }
@@ -247,16 +250,12 @@ function writeInterface (contents, typeName, props) {
   writeLine(contents)
 }
 
-function addQuasarLangCodes (contents) {
-  // We are able to read this file only because
-  //  it's been generated before type generation take place
-  const langJson = require('../lang/index.json')
-
+function addQuasarLangCodes (contents, quasarLangIndex) {
   // Assure we are doing a module augmentation instead of a module overwrite
   writeLine(contents, 'import \'./lang\'')
   writeLine(contents, 'declare module \'./lang\' {')
   writeLine(contents, 'export interface QuasarLanguageCodesHolder {', 2)
-  langJson.forEach(({ isoName }) => writeLine(contents, `'${ isoName }': true`, 3))
+  quasarLangIndex.forEach(({ isoName }) => writeLine(contents, `'${ isoName }': true`, 3))
   writeLine(contents, '}', 2)
   writeLine(contents, '}')
 }
@@ -274,7 +273,7 @@ function transformObject (definition, handler) {
   return result
 }
 
-function getIndexDts (apis) {
+function getIndexDts (apis, quasarLangIndex) {
   const contents = []
   const quasarTypeContents = []
   const components = []
@@ -283,7 +282,7 @@ function getIndexDts (apis) {
   /** @type { { [componentName: string]: { props: string; slots: string; } } } */
   const componentToSubTypeMap = {}
 
-  addQuasarLangCodes(quasarTypeContents)
+  addQuasarLangCodes(quasarTypeContents, quasarLangIndex)
 
   // TODO: (Qv3) remove this reference to q/app and
   // rely on the shim provided by the starter kit with
@@ -330,7 +329,7 @@ function getIndexDts (apis) {
     const extendsVue = (content.type === 'component' || content.type === 'mixin')
     const typeValue = `${ extendsVue ? `ComponentConstructor<${ typeName }>` : typeName }`
     // Add Type to the appropriate section of types
-    const propTypeDef = `${ typeName }?: ${ typeValue }`
+    const propTypeDef = `${ typeName }: ${ typeValue }`
 
     if (content.quasarConfOptions) {
       const confOptions = content.quasarConfOptions
@@ -429,6 +428,18 @@ function getIndexDts (apis) {
 
       prop.type = 'Function'
     })
+
+    if (content.type === 'plugin') {
+      Object.keys(content.methods).forEach(methodName => {
+        const method = content.methods[ methodName ]
+        if (method.alias) {
+          content.methods[ method.alias ] = {
+            ...method,
+            desc: `(Alias of "${ methodName }") ${ method.desc }`
+          }
+        }
+      })
+    }
 
     // computedProps should always be required
     content.computedProps = transformObject(content.computedProps, makeRequired)
@@ -557,11 +568,14 @@ function getIndexDts (apis) {
       // Example: $q.dialog -> target: $q, property: dialog
       const [ target, property ] = content.injection.split('.')
 
-      if (!injections[ target ]) {
-        injections[ target ] = []
-      }
+      // should not be the following; they are declared separately in globals.d.ts
+      if ([ 'iconSet', 'lang' ].includes(property) === false) {
+        if (!injections[ target ]) {
+          injections[ target ] = []
+        }
 
-      injections[ target ].push(getInjectionDefinition(property, content, typeName))
+        injections[ target ].push(getInjectionDefinition(property, content, typeName))
+      }
     }
   })
 
@@ -607,7 +621,7 @@ function getIndexDts (apis) {
   writeLine(contents)
 
   // Extend Vue instance with injections
-  writeLine(contents, 'declare module \'@vue/runtime-core\' {')
+  writeLine(contents, 'declare module \'vue\' {')
   writeLine(contents, 'interface ComponentCustomProperties {', 1)
 
   for (const key in injections) {
@@ -627,14 +641,23 @@ function getIndexDts (apis) {
   writeLine(contents)
 
   // Provide `GlobalComponents`, expected to be used for Volar
-  writeLine(contents, 'declare module \'@vue/runtime-core\' {')
-  writeLine(contents, 'interface GlobalComponents {', 1)
-
+  // See: https://github.com/vuejs/language-tools/issues/4170#issuecomment-2025528945
+  writeLine(contents, 'interface _GlobalComponents {')
   for (const [ typeName, { props: propsTypeName, slots: slotsTypeName } ] of Object.entries(componentToSubTypeMap)) {
-    writeLine(contents, `${ typeName }: GlobalComponentConstructor<${ propsTypeName }, ${ slotsTypeName }>`, 2)
+    writeLine(contents, `${ typeName }: GlobalComponentConstructor<${ propsTypeName }, ${ slotsTypeName }>`, 1)
   }
-
-  writeLine(contents, '}', 1)
+  writeLine(contents, '}')
+  writeLine(contents)
+  writeLine(contents, 'declare module \'vue\' {')
+  writeLine(contents, 'interface GlobalComponents extends _GlobalComponents {}', 1)
+  writeLine(contents, '}')
+  writeLine(contents)
+  writeLine(contents, 'declare module \'@vue/runtime-dom\' {')
+  writeLine(contents, 'interface GlobalComponents extends _GlobalComponents {}', 1)
+  writeLine(contents, '}')
+  writeLine(contents)
+  writeLine(contents, 'declare module \'vue\' {')
+  writeLine(contents, 'interface GlobalComponents extends _GlobalComponents {}', 1)
   writeLine(contents, '}')
   writeLine(contents)
 
@@ -648,13 +671,18 @@ function getIndexDts (apis) {
 
   writeLine(contents, 'declare module \'./plugin\' {')
   writeInterface(contents, 'QuasarComponents', components)
-  writeInterface(contents, 'QuasarDirectives', directives)
+  writeInterface(
+    contents,
+    'QuasarDirectives',
+    // example: `vTouchSwipe: TouchSwipe` -> `TouchSwipe: TouchSwipe`
+    directives.map(directive => directive.replace(/(\s?)(v)([A-Z]\w+:)/, '$1$3'))
+  )
   writeInterface(contents, 'QuasarPlugins', plugins)
   writeLine(contents, '}')
   writeLine(contents)
 
   writeLine(contents, 'import { QuasarPluginOptions } from \'./plugin\'')
-  writeLine(contents, 'export const Quasar: { install: (app: App, options: Partial<QuasarPluginOptions>) => any } & QSingletonGlobals')
+  writeLine(contents, 'export const Quasar: { install: (app: App, options?: QuasarPluginOptions) => any } & QSingletonGlobals')
   writeLine(contents, 'export default Quasar')
   writeLine(contents)
 
@@ -669,8 +697,6 @@ function getIndexDts (apis) {
     body: contents.join('')
   }
 }
-
-const ts = require('typescript')
 
 /**
  * @throws {Error} if TypeScript validation fails
@@ -702,16 +728,16 @@ function ensureTypeScriptValidity () {
   throw error
 }
 
-module.exports.generate = async function (data) {
-  const apis = data.plugins
-    .concat(data.directives)
-    .concat(data.components)
+export async function generate ({ api, quasarLangIndex }) {
+  const apiList = api.plugins
+    .concat(api.directives)
+    .concat(api.components)
 
   try {
     await Promise.all(copyPredefinedTypes(typeRoot))
 
-    const { header, body } = getIndexDts(apis)
-    const formattedBody = prettier.format(body, { parser: 'typescript' })
+    const { header, body } = getIndexDts(apiList, quasarLangIndex)
+    const formattedBody = await prettier.format(body, { parser: 'typescript' })
 
     // The header contains stuff that breaks TS checking.
     // So, write only the body at first to check the validity

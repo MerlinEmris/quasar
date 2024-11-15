@@ -26,7 +26,8 @@ interface SliderMarkerLabelObjectDefinition {
 
 export type SliderMarkerLabels =
   | boolean
-  | Array<SliderMarkerLabelDefinitionRequiredValue>
+  // using a number is shorthand for { value: number }
+  | (SliderMarkerLabelDefinitionRequiredValue | number)[]
   | SliderMarkerLabelObjectDefinition
   | ((value: number) => string | SliderMarkerLabelDefinition);
 
@@ -39,8 +40,6 @@ export type SliderMarkerLabelConfig = {
   classes: string;
   style: VueStyleObjectProp;
 };
-
-export type SliderMarkerLabelArrayConfig = SliderMarkerLabelConfig[];
 
 export interface SliderMarkerLabelObjectConfig {
   [value: number]: SliderMarkerLabelConfig;

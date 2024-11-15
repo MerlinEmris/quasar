@@ -10,8 +10,12 @@ import { BaseAPI } from './BaseAPI.js'
  * API for extension's /index.js script
  */
 export class IndexAPI extends BaseAPI {
+  prompts
+
   constructor (opts, appExtJson) {
     super(opts)
+
+    this.prompts = opts.prompts
     this.#appExtJson = appExtJson
   }
 
@@ -141,7 +145,7 @@ export class IndexAPI extends BaseAPI {
   }
 
   /**
-   * Extend Bex scripts (background/content/dom) Esbuild config
+   * Extend Bex scripts (background/content-script) Esbuild config
    *
    * @param {function} fn
    *   (cfg: Object, api) => undefined

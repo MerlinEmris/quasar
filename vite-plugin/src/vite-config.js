@@ -1,4 +1,3 @@
-
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -15,6 +14,20 @@ export function getViteConfig (runMode, viteMode, externalViteCfg) {
       __QUASAR_SSR__: false,
       __QUASAR_SSR_SERVER__: false,
       __QUASAR_SSR_CLIENT__: false
+    },
+
+    css: {
+      preprocessorOptions: {
+        // Use sass-embedded for better stability and performance
+        sass: {
+          api: 'modern-compiler',
+          silenceDeprecations: [ 'import', 'global-builtin' ]
+        },
+        scss: {
+          api: 'modern-compiler',
+          silenceDeprecations: [ 'import', 'global-builtin' ]
+        }
+      }
     }
   }
 
@@ -36,7 +49,7 @@ export function getViteConfig (runMode, viteMode, externalViteCfg) {
     if (viteMode !== 'production') {
       viteCfg.resolve = {
         alias: [
-          { find: /^quasar$/, replacement: 'quasar/dist/quasar.esm.js' }
+          { find: /^quasar$/, replacement: 'quasar/dist/quasar.client.js' }
         ]
       }
     }

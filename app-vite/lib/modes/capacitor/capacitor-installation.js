@@ -1,5 +1,3 @@
-
-import fs from 'node:fs'
 import fse from 'fs-extra'
 import compileTemplate from 'lodash/template.js'
 import inquirer from 'inquirer'
@@ -9,17 +7,14 @@ import { log, warn } from '../../utils/logger.js'
 import { spawnSync } from '../../utils/spawn.js'
 
 import { ensureDeps, ensureConsistency } from './ensure-consistency.js'
-
-export function isModeInstalled (appPaths) {
-  return fs.existsSync(appPaths.capacitorDir)
-}
+import { isModeInstalled } from '../modes-utils.js'
 
 export async function addMode ({
   ctx: { appPaths, cacheProxy, pkg: { appPkg } },
   silent,
   target
 }) {
-  if (isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'capacitor')) {
     if (target) {
       await addPlatform(target, appPaths, cacheProxy)
     }
@@ -66,9 +61,9 @@ export async function addMode ({
     cwd: appPaths.resolve.cli('templates/capacitor')
   }).forEach(filePath => {
     const dest = appPaths.resolve.capacitor(filePath)
-    const content = fs.readFileSync(appPaths.resolve.cli('templates/capacitor/' + filePath))
+    const content = fse.readFileSync(appPaths.resolve.cli('templates/capacitor/' + filePath))
     fse.ensureFileSync(dest)
-    fs.writeFileSync(dest, compileTemplate(content)(scope), 'utf-8')
+    fse.writeFileSync(dest, compileTemplate(content)(scope), 'utf-8')
   })
 
   await ensureDeps({ appPaths, cacheProxy })
@@ -102,7 +97,7 @@ export async function addMode ({
 export function removeMode ({
   ctx: { appPaths }
 }) {
-  if (!isModeInstalled(appPaths)) {
+  if (isModeInstalled(appPaths, 'capacitor') === false) {
     warn('No Capacitor support detected. Aborting.')
     return
   }
@@ -117,7 +112,7 @@ async function addPlatform (target, appPaths, cacheProxy) {
   await ensureConsistency({ appPaths, cacheProxy })
 
   // if it has the platform
-  if (fs.existsSync(appPaths.resolve.capacitor(target))) {
+  if (fse.existsSync(appPaths.resolve.capacitor(target))) {
     return
   }
 

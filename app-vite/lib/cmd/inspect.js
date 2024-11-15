@@ -53,20 +53,20 @@ const ctx = getCtx({
   mode: argv.mode,
   target: argv.mode === 'cordova' || argv.mode === 'capacitor'
     ? 'android'
-    : void 0,
+    : (argv.mode === 'bex' ? 'chrome' : void 0),
   debug: argv.debug,
   dev: argv.cmd === 'dev',
   prod: argv.cmd === 'build'
 })
 
 import { displayBanner } from '../utils/banner.js'
-displayBanner({ argv, ctx, cmd: argv.cmd })
+await displayBanner({ argv, ctx, cmd: argv.cmd })
 
 import { log, fatal } from '../utils/logger.js'
 
-const { isModeInstalled } = await import(`../modes/${ argv.mode }/${ argv.mode }-installation.js`)
+import { isModeInstalled } from '../modes/modes-utils.js'
 
-if (isModeInstalled(ctx.appPaths) !== true) {
+if (isModeInstalled(ctx.appPaths, argv.mode) !== true) {
   fatal('Requested mode for inspection is NOT installed.')
 }
 
@@ -104,9 +104,9 @@ for (const name of threadList) {
 }
 
 if (argv.path) {
-  const dot = await import('dot-prop')
+  const { getProperty } = await import('dot-prop')
   cfgEntries.forEach(cfgEntry => {
-    cfgEntry.object = dot.get(cfgEntry.object, argv.path)
+    cfgEntry.object = getProperty(cfgEntry.object, argv.path)
   })
 }
 

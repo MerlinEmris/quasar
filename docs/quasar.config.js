@@ -1,18 +1,11 @@
+import { defineConfig } from '#q-app/wrappers'
 import { fileURLToPath } from 'node:url'
 
 import mdPlugin from './build/md/index.js'
 import examplesPlugin from './build/examples.js'
 import manualChunks from './build/chunks.js'
 
-export default ctx => ({
-  eslint: {
-    warnings: true,
-    errors: true,
-    exclude: [
-      /(node_modules|ui[\\/])/
-    ]
-  },
-
+export default defineConfig(ctx => ({
   boot: [
     { path: 'gdpr', server: false }
   ],
@@ -43,13 +36,18 @@ export default ctx => ({
 
     vitePlugins: [
       mdPlugin,
-      examplesPlugin(ctx.prod)
+      examplesPlugin(ctx.prod),
+      [ 'vite-plugin-checker', {
+        eslint: {
+          lintCommand: 'eslint --report-unused-disable-directives "./**/*.{js,mjs,cjs,vue}"'
+        }
+      }, { server: false } ]
     ],
 
-    extendViteConf (config, { isClient }) {
+    extendViteConf (viteConf, { isClient }) {
       if (ctx.prod && isClient) {
-        config.build.chunkSizeWarningLimit = 650
-        config.build.rollupOptions = {
+        viteConf.build.chunkSizeWarningLimit = 650
+        viteConf.build.rollupOptions = {
           output: { manualChunks }
         }
       }
@@ -66,19 +64,15 @@ export default ctx => ({
   framework: {
     iconSet: 'svg-mdi-v6',
 
+    devTreeshaking: true,
+    autoImportVueExtensions: [ 'vue', 'md' ],
+
     config: {
       loadingBar: {
         color: 'brand-primary',
         size: '4px'
       }
     },
-
-    components: [
-      'QMarkupTable', // required md-plugin-table
-      'QBtn', // used directly in some .md files
-      'QBadge', // used directly in some .md files
-      'QSeparator' // used directly in some .md files
-    ],
 
     plugins: [
       'AddressbarColor',
@@ -102,7 +96,7 @@ export default ctx => ({
   animations: [ 'fadeIn', 'fadeOut' ],
 
   ssr: {
-    pwa: ctx.prod,
+    // pwa: ctx.prod,
     prodPort: 3111,
     middlewares: [
       'render'
@@ -128,4 +122,4 @@ export default ctx => ({
       })
     }
   }
-})
+}))

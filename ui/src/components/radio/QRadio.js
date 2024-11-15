@@ -2,17 +2,17 @@ import { h, ref, computed, getCurrentInstance, toRaw } from 'vue'
 
 import QIcon from '../icon/QIcon.js'
 
-import useDark, { useDarkProps } from '../../composables/private/use-dark.js'
-import useSize, { useSizeProps } from '../../composables/private/use-size.js'
-import useRefocusTarget from '../../composables/private/use-refocus-target.js'
-import { useFormProps, useFormInject } from '../../composables/private/use-form.js'
+import useDark, { useDarkProps } from '../../composables/private.use-dark/use-dark.js'
+import useSize, { useSizeProps } from '../../composables/private.use-size/use-size.js'
+import useRefocusTarget from '../../composables/private.use-refocus-target/use-refocus-target.js'
+import { useFormProps, useFormInject } from '../../composables/use-form/private.use-form.js'
 
-import { createComponent } from '../../utils/private/create.js'
-import optionSizes from '../../utils/private/option-sizes.js'
-import { stopAndPrevent } from '../../utils/event.js'
-import { hSlot, hMergeSlot } from '../../utils/private/render.js'
+import { createComponent } from '../../utils/private.create/create.js'
+import optionSizes from '../../utils/private.option-sizes/option-sizes.js'
+import { stopAndPrevent } from '../../utils/event/event.js'
+import { hSlot, hMergeSlot } from '../../utils/private.render/render.js'
 
-const svg = h('svg', {
+const createSvg = () => h('svg', {
   key: 'svg',
   class: 'q-radio__bg absolute non-selectable',
   viewBox: '0 0 24 24'
@@ -137,6 +137,8 @@ export default createComponent({
 
     // expose public methods
     Object.assign(proxy, { set: onClick })
+
+    const svg = createSvg()
 
     return () => {
       const content = icon.value !== null
